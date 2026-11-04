@@ -1,0 +1,1252 @@
+{
+  "version": "letters-0.5.0",
+  "rules": [
+    {
+      "code": "EMPTY_DOCUMENT",
+      "version": "1.0.1",
+      "category": "content",
+      "severity": "critical",
+      "description": "Документ не содержит распознанного текста",
+      "recommendation": "Проверьте содержимое файла и возможность извлечения текста.",
+      "implementation": "empty_text",
+      "source": {
+        "kind": "heuristic",
+        "ref": "LOCAL-DEMO-EMPTY-001",
+        "title": "Локальная демонстрационная эвристика",
+        "verified": false
+      },
+      "applicability": {
+        "document_types": [
+          "unspecified",
+          "request",
+          "response",
+          "notification",
+          "cover_letter"
+        ],
+        "templates": [],
+        "explanation": "Проверка извлечённого текста DOCX; замечание требует проверки человеком и не подтверждает нарушение инструкции.",
+        "policy_profiles": []
+      },
+      "policy_specification": null
+    },
+    {
+      "code": "CONTENT_VAGUE_DEADLINE",
+      "version": "1.0.1",
+      "category": "content",
+      "severity": "warning",
+      "description": "Неконкретный срок выполнения запрашиваемого действия",
+      "recommendation": "Если срок обязателен, укажите точную дату или согласованный период. Не подставляйте вымышленную дату.",
+      "implementation": "phrase",
+      "source": {
+        "kind": "heuristic",
+        "ref": "LOCAL-DEMO-CONTENT-001",
+        "title": "Локальная демонстрационная эвристика",
+        "verified": false
+      },
+      "applicability": {
+        "document_types": [
+          "unspecified",
+          "request",
+          "response",
+          "notification",
+          "cover_letter"
+        ],
+        "templates": [],
+        "explanation": "Проверка извлечённого текста DOCX; замечание требует проверки человеком и не подтверждает нарушение инструкции.",
+        "policy_profiles": []
+      },
+      "patterns": [
+        "в кратчайшие сроки",
+        "как можно скорее",
+        "в ближайшее время"
+      ],
+      "policy_specification": null
+    },
+    {
+      "code": "CONTENT_VAGUE_OBJECT",
+      "version": "1.0.1",
+      "category": "content",
+      "severity": "info",
+      "description": "Возможная неопределённость предмета запроса",
+      "recommendation": "Уточните перечень запрашиваемых документов, если он не определён в приложении или предыдущей переписке.",
+      "implementation": "phrase",
+      "source": {
+        "kind": "heuristic",
+        "ref": "LOCAL-DEMO-CONTENT-002",
+        "title": "Локальная демонстрационная эвристика",
+        "verified": false
+      },
+      "applicability": {
+        "document_types": [
+          "unspecified",
+          "request",
+          "response",
+          "notification",
+          "cover_letter"
+        ],
+        "templates": [],
+        "explanation": "Проверка извлечённого текста DOCX; замечание требует проверки человеком и не подтверждает нарушение инструкции.",
+        "policy_profiles": []
+      },
+      "patterns": [
+        "необходимую документацию",
+        "соответствующие документы"
+      ],
+      "policy_specification": null
+    },
+    {
+      "code": "LANG_LONG_PARAGRAPH",
+      "version": "1.0.1",
+      "category": "language",
+      "severity": "info",
+      "description": "Очень длинный абзац: стоит проверить читаемость",
+      "recommendation": "Рассмотрите разделение абзаца на смысловые части.",
+      "implementation": "long_paragraph",
+      "source": {
+        "kind": "heuristic",
+        "ref": "LOCAL-HEURISTIC-001",
+        "title": "Локальная демонстрационная эвристика",
+        "verified": false
+      },
+      "applicability": {
+        "document_types": [
+          "unspecified",
+          "request",
+          "response",
+          "notification",
+          "cover_letter"
+        ],
+        "templates": [],
+        "explanation": "Проверка извлечённого текста DOCX; замечание требует проверки человеком и не подтверждает нарушение инструкции.",
+        "policy_profiles": []
+      },
+      "threshold": 650,
+      "policy_specification": null
+    },
+    {
+      "code": "FMT_MANY_FONTS",
+      "version": "1.0.1",
+      "category": "formatting",
+      "severity": "info",
+      "description": "В документе используются четыре и более явно заданных шрифтов",
+      "recommendation": "Проверьте единообразие шрифтов с учётом ролей реквизитов и таблиц.",
+      "implementation": "many_fonts",
+      "source": {
+        "kind": "heuristic",
+        "ref": "LOCAL-HEURISTIC-002",
+        "title": "Локальная демонстрационная эвристика",
+        "verified": false
+      },
+      "applicability": {
+        "document_types": [
+          "unspecified",
+          "request",
+          "response",
+          "notification",
+          "cover_letter"
+        ],
+        "templates": [],
+        "explanation": "Проверка извлечённого текста DOCX; замечание требует проверки человеком и не подтверждает нарушение инструкции.",
+        "policy_profiles": []
+      },
+      "threshold": 4,
+      "policy_specification": null
+    },
+    {
+      "code": "ORG_MARGINS",
+      "version": "1.0.0",
+      "category": "formatting",
+      "severity": "warning",
+      "description": "Поля: слева 27,5 мм, справа 22,5 мм, сверху и снизу 20 мм.",
+      "recommendation": "Приведите проверяемое свойство к требованию выбранной инструкции. Сверьте роль блока и исключения; оригинал автоматически не изменяется.",
+      "implementation": "letter_policy",
+      "policy_specification": {
+        "id": "ORG_MARGINS",
+        "level": "hard",
+        "requirement": "Поля: слева 27,5 мм, справа 22,5 мм, сверху и снизу 20 мм.",
+        "applies_when": "Профиль организации подтверждён; известны свойства каждого раздела письма.",
+        "evidence": "Свойства sectPr, номер раздела и фактическое значение; техническое округление не объявлять нормой инструкции.",
+        "exceptions": "Специальный утверждённый бланк с иными полями требует отдельного подтверждённого профиля, а не угадывания по образцу.",
+        "sources": [
+          "III.2.1"
+        ],
+        "method": "docx_properties",
+        "expected": {
+          "left_mm": 27.5,
+          "right_mm": 22.5,
+          "top_mm": 20,
+          "bottom_mm": 20
+        },
+        "source_anchors": [
+          {
+            "id": "III.2.1",
+            "label": "Глава III, п. 2.1: поля, шрифт, интервалы, абзац",
+            "paragraphs": [
+              96,
+              97,
+              98,
+              99,
+              100,
+              101,
+              102,
+              103
+            ]
+          }
+        ],
+        "implementation_scope": "Проверяются только извлечённые свойства; визуальное положение реквизита не подтверждается."
+      },
+      "source": {
+        "kind": "instruction",
+        "ref": "ORG-INSTRUCTION:III.2.1",
+        "title": "Предоставленная инструкция, глава III: профиль исходящих писем",
+        "uri": "urn:sed-dss:owner-supplied-office-instruction#III.2.1",
+        "verified": false
+      },
+      "applicability": {
+        "document_types": [
+          "unspecified",
+          "request",
+          "response",
+          "notification",
+          "cover_letter"
+        ],
+        "templates": [],
+        "policy_profiles": [
+          "office_instruction_letters"
+        ],
+        "explanation": "Профиль организации подтверждён; известны свойства каждого раздела письма. Проверяются только извлечённые свойства; визуальное положение реквизита не подтверждается."
+      }
+    },
+    {
+      "code": "ORG_BODY_FONT",
+      "version": "1.0.0",
+      "category": "formatting",
+      "severity": "warning",
+      "description": "Основной текст: Times New Roman (Cyr).",
+      "recommendation": "Приведите проверяемое свойство к требованию выбранной инструкции. Сверьте роль блока и исключения; оригинал автоматически не изменяется.",
+      "implementation": "letter_policy",
+      "policy_specification": {
+        "id": "ORG_BODY_FONT",
+        "level": "hard",
+        "requirement": "Основной текст: Times New Roman (Cyr).",
+        "applies_when": "Распознан основной текст; разрешено эффективное начертание с учётом стилей и настроек документа.",
+        "evidence": "Фрагмент и эффективная гарнитура; не считать отсутствие прямого rFonts нарушением.",
+        "exceptions": "В таблицах допускается Arial меньшего размера; специальные реквизиты проверяются отдельно. Имена алиасов гарнитуры должны быть нормализованы.",
+        "sources": [
+          "III.2.1"
+        ],
+        "method": "role_aware_docx",
+        "expected": {
+          "family": "Times New Roman",
+          "table_exception": "Arial"
+        },
+        "source_anchors": [
+          {
+            "id": "III.2.1",
+            "label": "Глава III, п. 2.1: поля, шрифт, интервалы, абзац",
+            "paragraphs": [
+              96,
+              97,
+              98,
+              99,
+              100,
+              101,
+              102,
+              103
+            ]
+          }
+        ],
+        "implementation_scope": "Проверяются только извлечённые свойства; визуальное положение реквизита не подтверждается."
+      },
+      "source": {
+        "kind": "instruction",
+        "ref": "ORG-INSTRUCTION:III.2.1",
+        "title": "Предоставленная инструкция, глава III: профиль исходящих писем",
+        "uri": "urn:sed-dss:owner-supplied-office-instruction#III.2.1",
+        "verified": false
+      },
+      "applicability": {
+        "document_types": [
+          "unspecified",
+          "request",
+          "response",
+          "notification",
+          "cover_letter"
+        ],
+        "templates": [],
+        "policy_profiles": [
+          "office_instruction_letters"
+        ],
+        "explanation": "Распознан основной текст; разрешено эффективное начертание с учётом стилей и настроек документа. Проверяются только извлечённые свойства; визуальное положение реквизита не подтверждается."
+      }
+    },
+    {
+      "code": "ORG_BODY_FONT_SIZE",
+      "version": "1.0.0",
+      "category": "formatting",
+      "severity": "warning",
+      "description": "Размер шрифта основного текста — от 10 до 14 пт включительно.",
+      "recommendation": "Приведите проверяемое свойство к требованию выбранной инструкции. Сверьте роль блока и исключения; оригинал автоматически не изменяется.",
+      "implementation": "letter_policy",
+      "policy_specification": {
+        "id": "ORG_BODY_FONT_SIZE",
+        "level": "hard",
+        "requirement": "Размер шрифта основного текста — от 10 до 14 пт включительно.",
+        "applies_when": "Известна роль основного текста и эффективный размер шрифта.",
+        "evidence": "Адрес run и разрешённый размер, а не предположение по виду страницы.",
+        "exceptions": "Справочные данные — 9 пт, исполнитель — 12 пт, адресат — 14 пт; для таблиц допускается меньший Arial.",
+        "sources": [
+          "III.2.1",
+          "III.3.reference_data",
+          "III.3.recipient",
+          "III.3.executor"
+        ],
+        "method": "role_aware_docx",
+        "expected": {
+          "min_pt": 10,
+          "max_pt": 14
+        },
+        "source_anchors": [
+          {
+            "id": "III.2.1",
+            "label": "Глава III, п. 2.1: поля, шрифт, интервалы, абзац",
+            "paragraphs": [
+              96,
+              97,
+              98,
+              99,
+              100,
+              101,
+              102,
+              103
+            ]
+          },
+          {
+            "id": "III.3.reference_data",
+            "label": "Глава III, п. 3: справочные данные",
+            "paragraphs": [
+              144,
+              145,
+              146
+            ]
+          },
+          {
+            "id": "III.3.recipient",
+            "label": "Глава III, п. 3: адресат",
+            "paragraphs": [
+              176,
+              177,
+              178,
+              179,
+              180,
+              185,
+              192,
+              193,
+              194,
+              204,
+              213,
+              219,
+              220,
+              221
+            ]
+          },
+          {
+            "id": "III.3.executor",
+            "label": "Глава III, п. 3: отметка об исполнителе",
+            "paragraphs": [
+              392,
+              393,
+              394,
+              399,
+              400
+            ]
+          }
+        ],
+        "implementation_scope": "Проверяются только извлечённые свойства; визуальное положение реквизита не подтверждается."
+      },
+      "source": {
+        "kind": "instruction",
+        "ref": "ORG-INSTRUCTION:III.2.1,III.3.reference_data,III.3.recipient,III.3.executor",
+        "title": "Предоставленная инструкция, глава III: профиль исходящих писем",
+        "uri": "urn:sed-dss:owner-supplied-office-instruction#III.2.1,III.3.reference_data,III.3.recipient,III.3.executor",
+        "verified": false
+      },
+      "applicability": {
+        "document_types": [
+          "unspecified",
+          "request",
+          "response",
+          "notification",
+          "cover_letter"
+        ],
+        "templates": [],
+        "policy_profiles": [
+          "office_instruction_letters"
+        ],
+        "explanation": "Известна роль основного текста и эффективный размер шрифта. Проверяются только извлечённые свойства; визуальное положение реквизита не подтверждается."
+      }
+    },
+    {
+      "code": "ORG_BODY_LINE_SPACING",
+      "version": "1.0.0",
+      "category": "formatting",
+      "severity": "warning",
+      "description": "Межстрочный интервал основного текста — от 12 пт «точно» до двойного.",
+      "recommendation": "Приведите проверяемое свойство к требованию выбранной инструкции. Сверьте роль блока и исключения; оригинал автоматически не изменяется.",
+      "implementation": "letter_policy",
+      "policy_specification": {
+        "id": "ORG_BODY_LINE_SPACING",
+        "level": "conditional",
+        "requirement": "Межстрочный интервал основного текста — от 12 пт «точно» до двойного.",
+        "applies_when": "Определены режим интервала, эффективный шрифт и высота строки; сопоставимые величины.",
+        "evidence": "spacing/lineRule и вычисленная высота; точно меньше 12 пт и относительный интервал больше 2 можно обнаружить по свойствам. Несопоставимые режимы требуют уточнения/рендеринга.",
+        "exceptions": "Нельзя сравнивать raw line=240 с 12 пт без учёта единиц; специальные реквизиты имеют отдельные интервалы.",
+        "sources": [
+          "III.2.1"
+        ],
+        "method": "role_aware_docx",
+        "expected": {
+          "lower_exact_pt": 12,
+          "upper_relative_lines": 2
+        },
+        "source_anchors": [
+          {
+            "id": "III.2.1",
+            "label": "Глава III, п. 2.1: поля, шрифт, интервалы, абзац",
+            "paragraphs": [
+              96,
+              97,
+              98,
+              99,
+              100,
+              101,
+              102,
+              103
+            ]
+          }
+        ],
+        "implementation_scope": "Проверяются только извлечённые свойства; визуальное положение реквизита не подтверждается."
+      },
+      "source": {
+        "kind": "instruction",
+        "ref": "ORG-INSTRUCTION:III.2.1",
+        "title": "Предоставленная инструкция, глава III: профиль исходящих писем",
+        "uri": "urn:sed-dss:owner-supplied-office-instruction#III.2.1",
+        "verified": false
+      },
+      "applicability": {
+        "document_types": [
+          "unspecified",
+          "request",
+          "response",
+          "notification",
+          "cover_letter"
+        ],
+        "templates": [],
+        "policy_profiles": [
+          "office_instruction_letters"
+        ],
+        "explanation": "Определены режим интервала, эффективный шрифт и высота строки; сопоставимые величины. Проверяются только извлечённые свойства; визуальное положение реквизита не подтверждается."
+      }
+    },
+    {
+      "code": "ORG_BODY_FIRST_LINE",
+      "version": "1.0.0",
+      "category": "formatting",
+      "severity": "warning",
+      "description": "Начало обычного абзаца основного текста — отступ 12,5 мм от левой границы.",
+      "recommendation": "Приведите проверяемое свойство к требованию выбранной инструкции. Сверьте роль блока и исключения; оригинал автоматически не изменяется.",
+      "implementation": "letter_policy",
+      "policy_specification": {
+        "id": "ORG_BODY_FIRST_LINE",
+        "level": "hard",
+        "requirement": "Начало обычного абзаца основного текста — отступ 12,5 мм от левой границы.",
+        "applies_when": "Установлена роль обычного абзаца основного текста и его фактическое начало с учётом списков/стилей.",
+        "evidence": "Эффективный отступ первой строки и левого поля абзаца; таблицы, адресат и подпись не смешиваются с основным текстом.",
+        "exceptions": "Специальные реквизиты имеют свои положения. Пропущенный при извлечении smartTag не означает отсутствия значения в инструкции.",
+        "sources": [
+          "III.2.1"
+        ],
+        "method": "role_aware_docx",
+        "expected": {
+          "first_line_mm": 12.5
+        },
+        "source_anchors": [
+          {
+            "id": "III.2.1",
+            "label": "Глава III, п. 2.1: поля, шрифт, интервалы, абзац",
+            "paragraphs": [
+              96,
+              97,
+              98,
+              99,
+              100,
+              101,
+              102,
+              103
+            ]
+          }
+        ],
+        "implementation_scope": "Проверяются только извлечённые свойства; визуальное положение реквизита не подтверждается."
+      },
+      "source": {
+        "kind": "instruction",
+        "ref": "ORG-INSTRUCTION:III.2.1",
+        "title": "Предоставленная инструкция, глава III: профиль исходящих писем",
+        "uri": "urn:sed-dss:owner-supplied-office-instruction#III.2.1",
+        "verified": false
+      },
+      "applicability": {
+        "document_types": [
+          "unspecified",
+          "request",
+          "response",
+          "notification",
+          "cover_letter"
+        ],
+        "templates": [],
+        "policy_profiles": [
+          "office_instruction_letters"
+        ],
+        "explanation": "Установлена роль обычного абзаца основного текста и его фактическое начало с учётом списков/стилей. Проверяются только извлечённые свойства; визуальное положение реквизита не подтверждается."
+      }
+    },
+    {
+      "code": "ORG_REFERENCE_DATA_FONT",
+      "version": "1.0.0",
+      "category": "formatting",
+      "severity": "warning",
+      "description": "Справочные данные организации: Times New Roman 9 пт обычной насыщенности под наименованием.",
+      "recommendation": "Приведите проверяемое свойство к требованию выбранной инструкции. Сверьте роль блока и исключения; оригинал автоматически не изменяется.",
+      "implementation": "letter_policy",
+      "policy_specification": {
+        "id": "ORG_REFERENCE_DATA_FONT",
+        "level": "hard",
+        "requirement": "Справочные данные организации: Times New Roman 9 пт обычной насыщенности под наименованием.",
+        "applies_when": "Блок справочных данных определён отдельно от основного текста.",
+        "evidence": "Роль блока, гарнитура, кегль, насыщенность; расположение требует геометрии.",
+        "exceptions": "Общий минимум 10 пт не применяется к этому реквизиту.",
+        "sources": [
+          "III.3.reference_data"
+        ],
+        "method": "role_aware_docx",
+        "expected": {
+          "family": "Times New Roman",
+          "size_pt": 9,
+          "bold": false
+        },
+        "source_anchors": [
+          {
+            "id": "III.3.reference_data",
+            "label": "Глава III, п. 3: справочные данные",
+            "paragraphs": [
+              144,
+              145,
+              146
+            ]
+          }
+        ],
+        "implementation_scope": "Проверяются только извлечённые свойства; визуальное положение реквизита не подтверждается."
+      },
+      "source": {
+        "kind": "instruction",
+        "ref": "ORG-INSTRUCTION:III.3.reference_data",
+        "title": "Предоставленная инструкция, глава III: профиль исходящих писем",
+        "uri": "urn:sed-dss:owner-supplied-office-instruction#III.3.reference_data",
+        "verified": false
+      },
+      "applicability": {
+        "document_types": [
+          "unspecified",
+          "request",
+          "response",
+          "notification",
+          "cover_letter"
+        ],
+        "templates": [],
+        "policy_profiles": [
+          "office_instruction_letters"
+        ],
+        "explanation": "Блок справочных данных определён отдельно от основного текста. Проверяются только извлечённые свойства; визуальное положение реквизита не подтверждается."
+      }
+    },
+    {
+      "code": "ORG_RECIPIENT_FONT",
+      "version": "1.0.0",
+      "category": "formatting",
+      "severity": "warning",
+      "description": "Адресат: Times New Roman 14 пт обычной насыщенности; блок справа, строки выравнены по левому краю самого блока.",
+      "recommendation": "Приведите проверяемое свойство к требованию выбранной инструкции. Сверьте роль блока и исключения; оригинал автоматически не изменяется.",
+      "implementation": "letter_policy",
+      "policy_specification": {
+        "id": "ORG_RECIPIENT_FONT",
+        "level": "hard",
+        "requirement": "Адресат: Times New Roman 14 пт обычной насыщенности; блок справа, строки выравнены по левому краю самого блока.",
+        "applies_when": "Блок адресата надёжно установлен.",
+        "evidence": "Эффективные свойства и геометрия блока; не путать левое выравнивание внутри блока с положением блока на странице.",
+        "exceptions": "Не требовать 14 пт во всём письме.",
+        "sources": [
+          "III.3.recipient"
+        ],
+        "method": "role_aware_docx",
+        "expected": {
+          "family": "Times New Roman",
+          "size_pt": 14,
+          "bold": false
+        },
+        "source_anchors": [
+          {
+            "id": "III.3.recipient",
+            "label": "Глава III, п. 3: адресат",
+            "paragraphs": [
+              176,
+              177,
+              178,
+              179,
+              180,
+              185,
+              192,
+              193,
+              194,
+              204,
+              213,
+              219,
+              220,
+              221
+            ]
+          }
+        ],
+        "implementation_scope": "Проверяются только извлечённые свойства; визуальное положение реквизита не подтверждается."
+      },
+      "source": {
+        "kind": "instruction",
+        "ref": "ORG-INSTRUCTION:III.3.recipient",
+        "title": "Предоставленная инструкция, глава III: профиль исходящих писем",
+        "uri": "urn:sed-dss:owner-supplied-office-instruction#III.3.recipient",
+        "verified": false
+      },
+      "applicability": {
+        "document_types": [
+          "unspecified",
+          "request",
+          "response",
+          "notification",
+          "cover_letter"
+        ],
+        "templates": [],
+        "policy_profiles": [
+          "office_instruction_letters"
+        ],
+        "explanation": "Блок адресата надёжно установлен. Проверяются только извлечённые свойства; визуальное положение реквизита не подтверждается."
+      }
+    },
+    {
+      "code": "ORG_SUBJECT_FONT",
+      "version": "1.0.0",
+      "category": "formatting",
+      "severity": "warning",
+      "description": "Вид и размер шрифта заголовка/аннотации соответствуют виду и размеру шрифта текста письма.",
+      "recommendation": "Приведите проверяемое свойство к требованию выбранной инструкции. Сверьте роль блока и исключения; оригинал автоматически не изменяется.",
+      "implementation": "letter_policy",
+      "policy_specification": {
+        "id": "ORG_SUBJECT_FONT",
+        "level": "hard",
+        "requirement": "Вид и размер шрифта заголовка/аннотации соответствуют виду и размеру шрифта текста письма.",
+        "applies_when": "Заголовок и основной текст установлены; известен базовый шрифт основного текста.",
+        "evidence": "Сопоставление двух реквизитов, а не сравнение с произвольно выбранным первым run.",
+        "exceptions": "Насыщенность здесь отдельно не запрещена; требования заголовка приказа не переносятся на письмо.",
+        "sources": [
+          "III.3.subject"
+        ],
+        "method": "role_aware_docx",
+        "expected": {
+          "match": "body_family_and_size"
+        },
+        "source_anchors": [
+          {
+            "id": "III.3.subject",
+            "label": "Глава III, п. 3: заголовок к тексту",
+            "paragraphs": [
+              251,
+              252,
+              253,
+              258,
+              259,
+              260
+            ]
+          }
+        ],
+        "implementation_scope": "Проверяются только извлечённые свойства; визуальное положение реквизита не подтверждается."
+      },
+      "source": {
+        "kind": "instruction",
+        "ref": "ORG-INSTRUCTION:III.3.subject",
+        "title": "Предоставленная инструкция, глава III: профиль исходящих писем",
+        "uri": "urn:sed-dss:owner-supplied-office-instruction#III.3.subject",
+        "verified": false
+      },
+      "applicability": {
+        "document_types": [
+          "unspecified",
+          "request",
+          "response",
+          "notification",
+          "cover_letter"
+        ],
+        "templates": [],
+        "policy_profiles": [
+          "office_instruction_letters"
+        ],
+        "explanation": "Заголовок и основной текст установлены; известен базовый шрифт основного текста. Проверяются только извлечённые свойства; визуальное положение реквизита не подтверждается."
+      }
+    },
+    {
+      "code": "ORG_ATTACHMENT_FONT",
+      "version": "1.0.0",
+      "category": "formatting",
+      "severity": "warning",
+      "description": "Вид и размер шрифта отметки о приложениях соответствуют тексту письма.",
+      "recommendation": "Приведите проверяемое свойство к требованию выбранной инструкции. Сверьте роль блока и исключения; оригинал автоматически не изменяется.",
+      "implementation": "letter_policy",
+      "policy_specification": {
+        "id": "ORG_ATTACHMENT_FONT",
+        "level": "hard",
+        "requirement": "Вид и размер шрифта отметки о приложениях соответствуют тексту письма.",
+        "applies_when": "Отметка о приложениях распознана как реквизит.",
+        "evidence": "Сравнение гарнитуры/кегля с основным текстом.",
+        "exceptions": "Это не требование к шрифту внутри самих приложенных файлов.",
+        "sources": [
+          "III.3.attachments"
+        ],
+        "method": "role_aware_docx",
+        "expected": {
+          "match": "body_family_and_size"
+        },
+        "source_anchors": [
+          {
+            "id": "III.3.attachments",
+            "label": "Глава III, п. 3: отметка о приложении",
+            "paragraphs": [
+              281,
+              282,
+              283,
+              285,
+              287,
+              289,
+              290,
+              291,
+              293,
+              295,
+              306
+            ]
+          }
+        ],
+        "implementation_scope": "Проверяются только извлечённые свойства; визуальное положение реквизита не подтверждается."
+      },
+      "source": {
+        "kind": "instruction",
+        "ref": "ORG-INSTRUCTION:III.3.attachments",
+        "title": "Предоставленная инструкция, глава III: профиль исходящих писем",
+        "uri": "urn:sed-dss:owner-supplied-office-instruction#III.3.attachments",
+        "verified": false
+      },
+      "applicability": {
+        "document_types": [
+          "unspecified",
+          "request",
+          "response",
+          "notification",
+          "cover_letter"
+        ],
+        "templates": [],
+        "policy_profiles": [
+          "office_instruction_letters"
+        ],
+        "explanation": "Отметка о приложениях распознана как реквизит. Проверяются только извлечённые свойства; визуальное положение реквизита не подтверждается."
+      }
+    },
+    {
+      "code": "ORG_SIGNATURE_FONT",
+      "version": "1.0.0",
+      "category": "formatting",
+      "severity": "warning",
+      "description": "Вид и размер шрифта технически оформленного реквизита подписи совпадают с основным текстом.",
+      "recommendation": "Приведите проверяемое свойство к требованию выбранной инструкции. Сверьте роль блока и исключения; оригинал автоматически не изменяется.",
+      "implementation": "letter_policy",
+      "policy_specification": {
+        "id": "ORG_SIGNATURE_FONT",
+        "level": "hard",
+        "requirement": "Вид и размер шрифта технически оформленного реквизита подписи совпадают с основным текстом.",
+        "applies_when": "Установлен реквизит подписи, оформленный техническими средствами.",
+        "evidence": "Гарнитура и кегль подписи и основного текста.",
+        "exceptions": "Рукописные подписи и изображения нельзя проверять как текстовый шрифт.",
+        "sources": [
+          "III.3.signature"
+        ],
+        "method": "role_aware_docx",
+        "expected": {
+          "match": "body_family_and_size"
+        },
+        "source_anchors": [
+          {
+            "id": "III.3.signature",
+            "label": "Глава III, п. 3: подпись",
+            "paragraphs": [
+              341,
+              342,
+              343,
+              344,
+              372,
+              373,
+              374,
+              375,
+              376,
+              377,
+              378
+            ]
+          }
+        ],
+        "implementation_scope": "Проверяются только извлечённые свойства; визуальное положение реквизита не подтверждается."
+      },
+      "source": {
+        "kind": "instruction",
+        "ref": "ORG-INSTRUCTION:III.3.signature",
+        "title": "Предоставленная инструкция, глава III: профиль исходящих писем",
+        "uri": "urn:sed-dss:owner-supplied-office-instruction#III.3.signature",
+        "verified": false
+      },
+      "applicability": {
+        "document_types": [
+          "unspecified",
+          "request",
+          "response",
+          "notification",
+          "cover_letter"
+        ],
+        "templates": [],
+        "policy_profiles": [
+          "office_instruction_letters"
+        ],
+        "explanation": "Установлен реквизит подписи, оформленный техническими средствами. Проверяются только извлечённые свойства; визуальное положение реквизита не подтверждается."
+      }
+    },
+    {
+      "code": "ORG_EXECUTOR_FONT",
+      "version": "1.0.0",
+      "category": "formatting",
+      "severity": "warning",
+      "description": "Отметка об исполнителе: Times New Roman 12 пт обычной насыщенности.",
+      "recommendation": "Приведите проверяемое свойство к требованию выбранной инструкции. Сверьте роль блока и исключения; оригинал автоматически не изменяется.",
+      "implementation": "letter_policy",
+      "policy_specification": {
+        "id": "ORG_EXECUTOR_FONT",
+        "level": "hard",
+        "requirement": "Отметка об исполнителе: Times New Roman 12 пт обычной насыщенности.",
+        "applies_when": "Роль исполнителя установлена в теле, нижнем колонтитуле или другом достоверно определённом блоке.",
+        "evidence": "Роль и эффективные свойства текста.",
+        "exceptions": "Положение в Word footer не является обязательным условием существования реквизита.",
+        "sources": [
+          "III.3.executor"
+        ],
+        "method": "role_aware_docx",
+        "expected": {
+          "family": "Times New Roman",
+          "size_pt": 12,
+          "bold": false
+        },
+        "source_anchors": [
+          {
+            "id": "III.3.executor",
+            "label": "Глава III, п. 3: отметка об исполнителе",
+            "paragraphs": [
+              392,
+              393,
+              394,
+              399,
+              400
+            ]
+          }
+        ],
+        "implementation_scope": "Проверяются только извлечённые свойства; визуальное положение реквизита не подтверждается."
+      },
+      "source": {
+        "kind": "instruction",
+        "ref": "ORG-INSTRUCTION:III.3.executor",
+        "title": "Предоставленная инструкция, глава III: профиль исходящих писем",
+        "uri": "urn:sed-dss:owner-supplied-office-instruction#III.3.executor",
+        "verified": false
+      },
+      "applicability": {
+        "document_types": [
+          "unspecified",
+          "request",
+          "response",
+          "notification",
+          "cover_letter"
+        ],
+        "templates": [],
+        "policy_profiles": [
+          "office_instruction_letters"
+        ],
+        "explanation": "Роль исполнителя установлена в теле, нижнем колонтитуле или другом достоверно определённом блоке. Проверяются только извлечённые свойства; визуальное положение реквизита не подтверждается."
+      }
+    },
+    {
+      "code": "ORG_EXECUTOR_SPACING",
+      "version": "1.0.0",
+      "category": "formatting",
+      "severity": "warning",
+      "description": "В отметке об исполнителе — интервал 12 пт «точно».",
+      "recommendation": "Приведите проверяемое свойство к требованию выбранной инструкции. Сверьте роль блока и исключения; оригинал автоматически не изменяется.",
+      "implementation": "letter_policy",
+      "policy_specification": {
+        "id": "ORG_EXECUTOR_SPACING",
+        "level": "hard",
+        "requirement": "В отметке об исполнителе — интервал 12 пт «точно».",
+        "applies_when": "Роль исполнителя и эффективные свойства абзаца установлены.",
+        "evidence": "Разрешённые spacing/lineRule, включая наследование.",
+        "exceptions": "Одинарный относительный интервал не объявлять тождественным 12 пт «точно» без проверки.",
+        "sources": [
+          "III.3.executor"
+        ],
+        "method": "role_aware_docx",
+        "expected": {
+          "mode": "exact",
+          "line_pt": 12
+        },
+        "source_anchors": [
+          {
+            "id": "III.3.executor",
+            "label": "Глава III, п. 3: отметка об исполнителе",
+            "paragraphs": [
+              392,
+              393,
+              394,
+              399,
+              400
+            ]
+          }
+        ],
+        "implementation_scope": "Проверяются только извлечённые свойства; визуальное положение реквизита не подтверждается."
+      },
+      "source": {
+        "kind": "instruction",
+        "ref": "ORG-INSTRUCTION:III.3.executor",
+        "title": "Предоставленная инструкция, глава III: профиль исходящих писем",
+        "uri": "urn:sed-dss:owner-supplied-office-instruction#III.3.executor",
+        "verified": false
+      },
+      "applicability": {
+        "document_types": [
+          "unspecified",
+          "request",
+          "response",
+          "notification",
+          "cover_letter"
+        ],
+        "templates": [],
+        "policy_profiles": [
+          "office_instruction_letters"
+        ],
+        "explanation": "Роль исполнителя и эффективные свойства абзаца установлены. Проверяются только извлечённые свойства; визуальное положение реквизита не подтверждается."
+      }
+    },
+    {
+      "code": "ORG_DATE_FORMAT",
+      "version": "1.0.0",
+      "category": "content",
+      "severity": "warning",
+      "description": "Разрешены цифровая дата ДД.ММ.ГГГГ без «г» после неё и словесно-цифровая дата с месяцем словом, четырьмя цифрами года и «г.»; в однозначном дне словесной даты начальный ноль не ставится.",
+      "recommendation": "Приведите проверяемое свойство к требованию выбранной инструкции. Сверьте роль блока и исключения; оригинал автоматически не изменяется.",
+      "implementation": "letter_policy",
+      "policy_specification": {
+        "id": "ORG_DATE_FORMAT",
+        "level": "hard",
+        "requirement": "Разрешены цифровая дата ДД.ММ.ГГГГ без «г» после неё и словесно-цифровая дата с месяцем словом, четырьмя цифрами года и «г.»; в однозначном дне словесной даты начальный ноль не ставится.",
+        "applies_when": "Выделена именно дата документа/ссылки, а не произвольная последовательность в тексте или цитируемом коде.",
+        "evidence": "Роль даты и её полный фрагмент; календарная корректность проверяется отдельно.",
+        "exceptions": "24 декабря 2025 г. не является ошибкой по этой инструкции. Ссылка на входящий документ также приведена в словесном формате в самом источнике.",
+        "sources": [
+          "III.3.date",
+          "III.3.incoming_reference"
+        ],
+        "method": "role_aware_docx",
+        "expected": {
+          "accepted_forms": [
+            "numeric_dmy",
+            "russian_verbal_dmy"
+          ],
+          "numeric_year_digits": 4
+        },
+        "source_anchors": [
+          {
+            "id": "III.3.date",
+            "label": "Глава III, п. 3: дата документа",
+            "paragraphs": [
+              153,
+              154,
+              155,
+              156,
+              157,
+              158
+            ]
+          },
+          {
+            "id": "III.3.incoming_reference",
+            "label": "Глава III, п. 3: ссылка на входящий документ",
+            "paragraphs": [
+              164,
+              165,
+              166,
+              167,
+              168
+            ]
+          }
+        ],
+        "implementation_scope": "Проверяются только извлечённые свойства; визуальное положение реквизита не подтверждается."
+      },
+      "source": {
+        "kind": "instruction",
+        "ref": "ORG-INSTRUCTION:III.3.date,III.3.incoming_reference",
+        "title": "Предоставленная инструкция, глава III: профиль исходящих писем",
+        "uri": "urn:sed-dss:owner-supplied-office-instruction#III.3.date,III.3.incoming_reference",
+        "verified": false
+      },
+      "applicability": {
+        "document_types": [
+          "unspecified",
+          "request",
+          "response",
+          "notification",
+          "cover_letter"
+        ],
+        "templates": [],
+        "policy_profiles": [
+          "office_instruction_letters"
+        ],
+        "explanation": "Выделена именно дата документа/ссылки, а не произвольная последовательность в тексте или цитируемом коде. Проверяются только извлечённые свойства; визуальное положение реквизита не подтверждается."
+      }
+    },
+    {
+      "code": "ORG_RECIPIENT_COPY_LABEL",
+      "version": "1.0.0",
+      "category": "content",
+      "severity": "warning",
+      "description": "Перед вторым, третьим и четвёртым адресатом не указывается слово «Копия».",
+      "recommendation": "Приведите проверяемое свойство к требованию выбранной инструкции. Сверьте роль блока и исключения; оригинал автоматически не изменяется.",
+      "implementation": "letter_policy",
+      "policy_specification": {
+        "id": "ORG_RECIPIENT_COPY_LABEL",
+        "level": "conditional",
+        "requirement": "Перед вторым, третьим и четвёртым адресатом не указывается слово «Копия».",
+        "applies_when": "Распознаны дополнительные адресаты именно в реквизите.",
+        "evidence": "Роль и позиция подписи «Копия» перед адресатом.",
+        "exceptions": "Не запрещать слово «копия» в основном тексте или названиях приложений.",
+        "sources": [
+          "III.3.recipient"
+        ],
+        "method": "role_aware_docx",
+        "expected": {
+          "forbidden_label": "Копия"
+        },
+        "source_anchors": [
+          {
+            "id": "III.3.recipient",
+            "label": "Глава III, п. 3: адресат",
+            "paragraphs": [
+              176,
+              177,
+              178,
+              179,
+              180,
+              185,
+              192,
+              193,
+              194,
+              204,
+              213,
+              219,
+              220,
+              221
+            ]
+          }
+        ],
+        "implementation_scope": "Наличие метки Копия требует проверки номера адресата; автоматическое нарушение не выставляется."
+      },
+      "source": {
+        "kind": "instruction",
+        "ref": "ORG-INSTRUCTION:III.3.recipient",
+        "title": "Предоставленная инструкция, глава III: профиль исходящих писем",
+        "uri": "urn:sed-dss:owner-supplied-office-instruction#III.3.recipient",
+        "verified": false
+      },
+      "applicability": {
+        "document_types": [
+          "unspecified",
+          "request",
+          "response",
+          "notification",
+          "cover_letter"
+        ],
+        "templates": [],
+        "policy_profiles": [
+          "office_instruction_letters"
+        ],
+        "explanation": "Распознаны дополнительные адресаты именно в реквизите. Наличие метки Копия требует проверки номера адресата; автоматическое нарушение не выставляется."
+      }
+    },
+    {
+      "code": "ORG_SIGNATURE_FORBIDDEN_PREFIX",
+      "version": "1.0.0",
+      "category": "content",
+      "severity": "warning",
+      "description": "Перед должностью подписанта нельзя ставить «За» или косую черту.",
+      "recommendation": "Приведите проверяемое свойство к требованию выбранной инструкции. Сверьте роль блока и исключения; оригинал автоматически не изменяется.",
+      "implementation": "letter_policy",
+      "policy_specification": {
+        "id": "ORG_SIGNATURE_FORBIDDEN_PREFIX",
+        "level": "conditional",
+        "requirement": "Перед должностью подписанта нельзя ставить «За» или косую черту.",
+        "applies_when": "Достоверно выделена должность в реквизите подписи.",
+        "evidence": "Точная строка должности и запрещённый префикс.",
+        "exceptions": "Не запрещать предлог «за» и слеш в остальном тексте. Уполномоченного замещающего подписанта не объявлять нарушителем без проверки полномочий.",
+        "sources": [
+          "III.3.signature"
+        ],
+        "method": "role_aware_docx",
+        "expected": {
+          "forbidden_prefixes": [
+            "За",
+            "/"
+          ]
+        },
+        "source_anchors": [
+          {
+            "id": "III.3.signature",
+            "label": "Глава III, п. 3: подпись",
+            "paragraphs": [
+              341,
+              342,
+              343,
+              344,
+              372,
+              373,
+              374,
+              375,
+              376,
+              377,
+              378
+            ]
+          }
+        ],
+        "implementation_scope": "Проверяются только извлечённые свойства; визуальное положение реквизита не подтверждается."
+      },
+      "source": {
+        "kind": "instruction",
+        "ref": "ORG-INSTRUCTION:III.3.signature",
+        "title": "Предоставленная инструкция, глава III: профиль исходящих писем",
+        "uri": "urn:sed-dss:owner-supplied-office-instruction#III.3.signature",
+        "verified": false
+      },
+      "applicability": {
+        "document_types": [
+          "unspecified",
+          "request",
+          "response",
+          "notification",
+          "cover_letter"
+        ],
+        "templates": [],
+        "policy_profiles": [
+          "office_instruction_letters"
+        ],
+        "explanation": "Достоверно выделена должность в реквизите подписи. Проверяются только извлечённые свойства; визуальное положение реквизита не подтверждается."
+      }
+    },
+    {
+      "code": "ORG_EXECUTOR_CONTACT",
+      "version": "1.0.0",
+      "category": "content",
+      "severity": "warning",
+      "description": "В отметке об исполнителе есть имя, отчество, фамилия и номер телефона; блок внизу слева на лицевой стороне последнего листа.",
+      "recommendation": "Приведите проверяемое свойство к требованию выбранной инструкции. Сверьте роль блока и исключения; оригинал автоматически не изменяется.",
+      "implementation": "letter_policy",
+      "policy_specification": {
+        "id": "ORG_EXECUTOR_CONTACT",
+        "level": "conditional",
+        "requirement": "В отметке об исполнителе есть имя, отчество, фамилия и номер телефона; блок внизу слева на лицевой стороне последнего листа.",
+        "applies_when": "Известна область исполнителя и доступно полное содержимое последнего листа.",
+        "evidence": "Роль, ФИО/телефон и геометрия; телефон не обязан иметь ровно один формат из примера.",
+        "exceptions": "Должность и email — дополнительные поля, не обязательные. Word footer не обязателен: блок может находиться в теле/таблице. Контакт организации в шапке не заменяет телефон исполнителя.",
+        "sources": [
+          "III.3.executor",
+          "III.7.2"
+        ],
+        "method": "role_aware_docx",
+        "expected": {
+          "fields": [
+            "executor_name",
+            "executor_phone"
+          ],
+          "logical_position": "last_page_bottom_left"
+        },
+        "source_anchors": [
+          {
+            "id": "III.3.executor",
+            "label": "Глава III, п. 3: отметка об исполнителе",
+            "paragraphs": [
+              392,
+              393,
+              394,
+              399,
+              400
+            ]
+          },
+          {
+            "id": "III.7.2",
+            "label": "Глава III, п. 7.2: реквизиты служебного письма",
+            "paragraphs": [
+              568,
+              570,
+              571,
+              572,
+              573,
+              574,
+              575,
+              576,
+              577,
+              578,
+              579,
+              580,
+              581,
+              582,
+              584
+            ]
+          }
+        ],
+        "implementation_scope": "Проверяются только извлечённые свойства; визуальное положение реквизита не подтверждается."
+      },
+      "source": {
+        "kind": "instruction",
+        "ref": "ORG-INSTRUCTION:III.3.executor,III.7.2",
+        "title": "Предоставленная инструкция, глава III: профиль исходящих писем",
+        "uri": "urn:sed-dss:owner-supplied-office-instruction#III.3.executor,III.7.2",
+        "verified": false
+      },
+      "applicability": {
+        "document_types": [
+          "unspecified",
+          "request",
+          "response",
+          "notification",
+          "cover_letter"
+        ],
+        "templates": [],
+        "policy_profiles": [
+          "office_instruction_letters"
+        ],
+        "explanation": "Известна область исполнителя и доступно полное содержимое последнего листа. Проверяются только извлечённые свойства; визуальное положение реквизита не подтверждается."
+      }
+    }
+  ]
+}

@@ -1,0 +1,1539 @@
+{
+  "info": {
+    "name": "SED-DSS — локальный API v1",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "description": "Импортируйте также SED-DSS.local.postman_environment.json. Заполните только app_api_key из .env. Ключ Z.AI и токен OpenClaw сюда не добавлять. Рабочая папка Postman — корень проекта; либо выберите DOCX в Body → form-data → file. Инструкция: docs/POSTMAN.md. Без внешнего согласия сервер даёт HTTP 409. Удаляющий запрос по умолчанию пропускается. Локальный язык включается отдельно через профиль language."
+  },
+  "auth": {
+    "type": "apikey",
+    "apikey": [
+      {
+        "key": "key",
+        "value": "X-API-Key",
+        "type": "string"
+      },
+      {
+        "key": "value",
+        "value": "{{app_api_key}}",
+        "type": "string"
+      },
+      {
+        "key": "in",
+        "value": "header",
+        "type": "string"
+      }
+    ]
+  },
+  "variable": [
+    {
+      "key": "report_id",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "request_id",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "rules_report_id",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "rules_idempotency_key",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "llm_idempotency_key",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "policy_idempotency_key",
+      "value": "",
+      "type": "string"
+    }
+  ],
+  "item": [
+    {
+      "name": "01 — Состояние сервиса",
+      "item": [
+        {
+          "name": "Живость API",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{base_url}}/health/live",
+            "description": "",
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Готовность БД",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{base_url}}/health/ready",
+            "description": "",
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Возможности и настройки",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{base_url}}/api/v1/capabilities",
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "02 — Анализ без модели",
+      "item": [
+        {
+          "name": "Проверить DOCX локально",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Idempotency-Key",
+                "value": "{{rules_idempotency_key}}"
+              }
+            ],
+            "url": "{{base_url}}/api/v1/analyze",
+            "description": "Выберите синтетический DOCX или свой разрешённый файл. Внешней передачи нет. Новый Send создаёт новый ключ.",
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "file",
+                  "type": "file",
+                  "src": "examples/postman_synthetic.docx"
+                },
+                {
+                  "key": "use_llm",
+                  "value": "false",
+                  "type": "text"
+                },
+                {
+                  "key": "allow_external_transfer",
+                  "value": "false",
+                  "type": "text"
+                },
+                {
+                  "key": "document_type",
+                  "value": "unspecified",
+                  "type": "text"
+                },
+                {
+                  "key": "external_document_id",
+                  "value": "postman-synthetic-demo",
+                  "type": "text",
+                  "disabled": true
+                },
+                {
+                  "key": "use_language_checks",
+                  "value": "false",
+                  "type": "text"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.collectionVariables.set(\"rules_idempotency_key\", pm.variables.replaceIn(\"{{$guid}}\"));"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", () => pm.response.to.have.status(200));",
+                  "const report = pm.response.json();",
+                  "pm.test(\"Отчёт сохранён\", () => pm.expect(report.id).to.be.a(\"string\"));",
+                  "pm.test(\"Есть трассировка\", () => pm.expect(pm.response.headers.get(\"X-Request-ID\")).to.be.a(\"string\"));",
+                  "if (pm.response.code === 200 && report.id) {",
+                  "  pm.collectionVariables.set(\"report_id\", report.id);",
+                  "  pm.collectionVariables.set(\"request_id\", report.request_id);",
+                  "}",
+                  "pm.test(\"Локальный анализ завершён\", () => {",
+                  "  pm.expect(report.mode).to.eql(\"rules_only\");",
+                  "  pm.expect(report.status).to.eql(\"completed\");",
+                  "});",
+                  "if (report.id) pm.collectionVariables.set(\"rules_report_id\", report.id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Повторить тот же запрос без нового анализа",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Idempotency-Key",
+                "value": "{{rules_idempotency_key}}"
+              }
+            ],
+            "url": "{{base_url}}/api/v1/analyze",
+            "description": "Сначала выполните предыдущий запрос. Файл и все поля должны быть идентичны.",
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "file",
+                  "type": "file",
+                  "src": "examples/postman_synthetic.docx"
+                },
+                {
+                  "key": "use_llm",
+                  "value": "false",
+                  "type": "text"
+                },
+                {
+                  "key": "allow_external_transfer",
+                  "value": "false",
+                  "type": "text"
+                },
+                {
+                  "key": "document_type",
+                  "value": "unspecified",
+                  "type": "text"
+                },
+                {
+                  "key": "external_document_id",
+                  "value": "postman-synthetic-demo",
+                  "type": "text",
+                  "disabled": true
+                },
+                {
+                  "key": "use_language_checks",
+                  "value": "false",
+                  "type": "text"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"Вернулся прежний отчёт\", () => {",
+                  "  pm.expect(pm.response.json().id).to.eql(pm.collectionVariables.get(\"rules_report_id\"));",
+                  "  pm.expect(pm.response.headers.get(\"Idempotency-Replayed\")).to.eql(\"true\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "LLM без согласия: ожидается отказ",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": "{{base_url}}/api/v1/analyze",
+            "description": "Проверяет отказ до передачи текста. Модель не вызывается.",
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "file",
+                  "type": "file",
+                  "src": "examples/postman_synthetic.docx"
+                },
+                {
+                  "key": "use_llm",
+                  "value": "true",
+                  "type": "text"
+                },
+                {
+                  "key": "allow_external_transfer",
+                  "value": "false",
+                  "type": "text"
+                },
+                {
+                  "key": "document_type",
+                  "value": "unspecified",
+                  "type": "text"
+                },
+                {
+                  "key": "external_document_id",
+                  "value": "postman-synthetic-demo",
+                  "type": "text",
+                  "disabled": true
+                },
+                {
+                  "key": "use_language_checks",
+                  "value": "false",
+                  "type": "text"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 409\", () => pm.response.to.have.status(409));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Локальные орфография и грамматика",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": "{{base_url}}/api/v1/analyze",
+            "description": "Нужны профиль Docker language и LANGUAGE_TOOL_ENABLED=true. Текст проверяется внутри Docker без внешней модели. Если модуль недоступен, правила сохраняются и status=partial.",
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "file",
+                  "type": "file",
+                  "src": "examples/postman_synthetic.docx"
+                },
+                {
+                  "key": "use_llm",
+                  "value": "false",
+                  "type": "text"
+                },
+                {
+                  "key": "allow_external_transfer",
+                  "value": "false",
+                  "type": "text"
+                },
+                {
+                  "key": "document_type",
+                  "value": "unspecified",
+                  "type": "text"
+                },
+                {
+                  "key": "external_document_id",
+                  "value": "postman-synthetic-demo",
+                  "type": "text",
+                  "disabled": true
+                },
+                {
+                  "key": "use_language_checks",
+                  "value": "true",
+                  "type": "text"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", () => pm.response.to.have.status(200));",
+                  "const report = pm.response.json();",
+                  "pm.test(\"Отчёт сохранён\", () => pm.expect(report.id).to.be.a(\"string\"));",
+                  "pm.test(\"Есть трассировка\", () => pm.expect(pm.response.headers.get(\"X-Request-ID\")).to.be.a(\"string\"));",
+                  "if (pm.response.code === 200 && report.id) {",
+                  "  pm.collectionVariables.set(\"report_id\", report.id);",
+                  "  pm.collectionVariables.set(\"request_id\", report.request_id);",
+                  "}",
+                  "pm.test(\"Локальный языковой модуль завершился\", () => {",
+                  "  pm.expect(report.metrics.language_check.status).to.eql(\"completed\");",
+                  "  pm.expect(report.provider).to.eql(\"none\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "03 — Модель через OpenClaw (явное согласие)",
+      "item": [
+        {
+          "name": "Проверить DOCX с моделью",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Idempotency-Key",
+                "value": "{{llm_idempotency_key}}"
+              }
+            ],
+            "url": "{{base_url}}/api/v1/analyze",
+            "description": "Перед каждым запуском установите external_consent=true в окружении. Согласие потребляется до отправки и сбрасывается даже при таймауте. Без согласия запрос даёт понятный HTTP 409, а текст модели не передаётся. Начните с examples/postman_synthetic.docx. HTTP 200 со status=partial не означает успех модели.",
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "file",
+                  "type": "file",
+                  "src": "examples/postman_synthetic.docx"
+                },
+                {
+                  "key": "use_llm",
+                  "value": "true",
+                  "type": "text"
+                },
+                {
+                  "key": "allow_external_transfer",
+                  "value": "{{external_consent}}",
+                  "type": "text"
+                },
+                {
+                  "key": "document_type",
+                  "value": "unspecified",
+                  "type": "text"
+                },
+                {
+                  "key": "external_document_id",
+                  "value": "postman-synthetic-demo",
+                  "type": "text",
+                  "disabled": true
+                },
+                {
+                  "key": "use_language_checks",
+                  "value": "false",
+                  "type": "text"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const consent = pm.environment.get(\"external_consent\") === \"true\";",
+                  "pm.variables.set(\"external_consent\", consent ? \"true\" : \"false\");",
+                  "pm.environment.set(\"external_consent\", \"false\");",
+                  "pm.collectionVariables.set(\"llm_idempotency_key\", pm.variables.replaceIn(\"{{$guid}}\"));"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.variables.get(\"external_consent\") !== \"true\") {",
+                  "  pm.test(\"Без согласия сервер возвращает HTTP 409\", () => pm.response.to.have.status(409));",
+                  "} else {",
+                  "  pm.test(\"HTTP 200\", () => pm.response.to.have.status(200));",
+                  "const report = pm.response.json();",
+                  "pm.test(\"Отчёт сохранён\", () => pm.expect(report.id).to.be.a(\"string\"));",
+                  "pm.test(\"Есть трассировка\", () => pm.expect(pm.response.headers.get(\"X-Request-ID\")).to.be.a(\"string\"));",
+                  "if (pm.response.code === 200 && report.id) {",
+                  "  pm.collectionVariables.set(\"report_id\", report.id);",
+                  "  pm.collectionVariables.set(\"request_id\", report.request_id);",
+                  "}",
+                  "pm.test(\"Модельная часть завершилась\", () => {",
+                  "  pm.expect(report.mode).to.eql(\"hybrid\");",
+                  "  pm.expect(report.provider).to.eql(\"openclaw\");",
+                  "  pm.expect(report.status).to.eql(\"completed\");",
+                  "});",
+                  "pm.test(\"Выводы модели требуют проверки\", () => {",
+                  "  (report.findings || []).filter(f => f.method === \"llm\").forEach(f => pm.expect(f.verified).to.eql(false));",
+                  "});",
+                  "}"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "04 — Отчёты",
+      "item": [
+        {
+          "name": "Получить последний созданный отчёт",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{base_url}}/api/v1/reports/{{report_id}}",
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Список отчётов",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{base_url}}/api/v1/reports?limit=20&offset=0",
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Найти по идентификатору запроса",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{base_url}}/api/v1/reports?request_id={{request_id}}",
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Удалить выбранный отчёт (вручную)",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": "{{base_url}}/api/v1/reports/{{report_id}}",
+            "description": "Проверьте report_id. Только для намеренного удаления поставьте allow_delete=true. Флаг сбрасывается после ответа. Корпус не затрагивается."
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.environment.get(\"allow_delete\") !== \"true\") pm.execution.skipRequest();"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 204\", () => pm.response.to.have.status(204));",
+                  "pm.environment.set(\"allow_delete\", \"false\");"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "05 — Правила и база знаний",
+      "item": [
+        {
+          "name": "Текущие правила",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{base_url}}/api/v1/rules",
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Версии правила о сроке",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{base_url}}/api/v1/rules/CONTENT_VAGUE_DEADLINE/versions",
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Список документов базы знаний",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{base_url}}/api/v1/knowledge/documents",
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "06 — Проверки по инструкции: 10 документов",
+      "item": [
+        {
+          "name": "01_left_margin — ORG_MARGINS",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Idempotency-Key",
+                "value": "{{policy_idempotency_key}}"
+              }
+            ],
+            "url": "{{base_url}}/api/v1/analyze",
+            "description": "Синтетическое письмо с одной контролируемой правкой. Создать файлы: python scripts/create_letter_demos.py. Модель не вызывается. Если файл не найден, выберите его вручную в Body → file.",
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "file",
+                  "type": "file",
+                  "src": "examples/private/postman_cases/incorrect/01_left_margin.docx"
+                },
+                {
+                  "key": "use_llm",
+                  "value": "false",
+                  "type": "text"
+                },
+                {
+                  "key": "allow_external_transfer",
+                  "value": "false",
+                  "type": "text"
+                },
+                {
+                  "key": "document_type",
+                  "value": "unspecified",
+                  "type": "text"
+                },
+                {
+                  "key": "external_document_id",
+                  "value": "postman-synthetic-demo",
+                  "type": "text",
+                  "disabled": true
+                },
+                {
+                  "key": "use_language_checks",
+                  "value": "false",
+                  "type": "text"
+                },
+                {
+                  "key": "policy_profile",
+                  "type": "text",
+                  "value": "office_instruction_letters"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.collectionVariables.set(\"policy_idempotency_key\", pm.variables.replaceIn(\"{{$guid}}\"));"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", () => pm.response.to.have.status(200));",
+                  "const report = pm.response.json();",
+                  "pm.test(\"Отчёт сохранён\", () => pm.expect(report.id).to.be.a(\"string\"));",
+                  "pm.test(\"Есть трассировка\", () => pm.expect(pm.response.headers.get(\"X-Request-ID\")).to.be.a(\"string\"));",
+                  "if (pm.response.code === 200 && report.id) {",
+                  "  pm.collectionVariables.set(\"report_id\", report.id);",
+                  "  pm.collectionVariables.set(\"request_id\", report.request_id);",
+                  "}",
+                  "pm.test(\"Обнаружен ожидаемый дефект\", () => {",
+                  "  pm.expect(report.findings.map(f => f.code)).to.include(\"ORG_MARGINS\");",
+                  "  pm.expect(report.provider).to.eql(\"none\");",
+                  "  pm.expect(report.status).to.eql(\"completed\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "02_body_font — ORG_BODY_FONT",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Idempotency-Key",
+                "value": "{{policy_idempotency_key}}"
+              }
+            ],
+            "url": "{{base_url}}/api/v1/analyze",
+            "description": "Синтетическое письмо с одной контролируемой правкой. Создать файлы: python scripts/create_letter_demos.py. Модель не вызывается. Если файл не найден, выберите его вручную в Body → file.",
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "file",
+                  "type": "file",
+                  "src": "examples/private/postman_cases/incorrect/02_body_font.docx"
+                },
+                {
+                  "key": "use_llm",
+                  "value": "false",
+                  "type": "text"
+                },
+                {
+                  "key": "allow_external_transfer",
+                  "value": "false",
+                  "type": "text"
+                },
+                {
+                  "key": "document_type",
+                  "value": "unspecified",
+                  "type": "text"
+                },
+                {
+                  "key": "external_document_id",
+                  "value": "postman-synthetic-demo",
+                  "type": "text",
+                  "disabled": true
+                },
+                {
+                  "key": "use_language_checks",
+                  "value": "false",
+                  "type": "text"
+                },
+                {
+                  "key": "policy_profile",
+                  "type": "text",
+                  "value": "office_instruction_letters"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.collectionVariables.set(\"policy_idempotency_key\", pm.variables.replaceIn(\"{{$guid}}\"));"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", () => pm.response.to.have.status(200));",
+                  "const report = pm.response.json();",
+                  "pm.test(\"Отчёт сохранён\", () => pm.expect(report.id).to.be.a(\"string\"));",
+                  "pm.test(\"Есть трассировка\", () => pm.expect(pm.response.headers.get(\"X-Request-ID\")).to.be.a(\"string\"));",
+                  "if (pm.response.code === 200 && report.id) {",
+                  "  pm.collectionVariables.set(\"report_id\", report.id);",
+                  "  pm.collectionVariables.set(\"request_id\", report.request_id);",
+                  "}",
+                  "pm.test(\"Обнаружен ожидаемый дефект\", () => {",
+                  "  pm.expect(report.findings.map(f => f.code)).to.include(\"ORG_BODY_FONT\");",
+                  "  pm.expect(report.provider).to.eql(\"none\");",
+                  "  pm.expect(report.status).to.eql(\"completed\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "03_body_size — ORG_BODY_FONT_SIZE",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Idempotency-Key",
+                "value": "{{policy_idempotency_key}}"
+              }
+            ],
+            "url": "{{base_url}}/api/v1/analyze",
+            "description": "Синтетическое письмо с одной контролируемой правкой. Создать файлы: python scripts/create_letter_demos.py. Модель не вызывается. Если файл не найден, выберите его вручную в Body → file.",
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "file",
+                  "type": "file",
+                  "src": "examples/private/postman_cases/incorrect/03_body_size.docx"
+                },
+                {
+                  "key": "use_llm",
+                  "value": "false",
+                  "type": "text"
+                },
+                {
+                  "key": "allow_external_transfer",
+                  "value": "false",
+                  "type": "text"
+                },
+                {
+                  "key": "document_type",
+                  "value": "unspecified",
+                  "type": "text"
+                },
+                {
+                  "key": "external_document_id",
+                  "value": "postman-synthetic-demo",
+                  "type": "text",
+                  "disabled": true
+                },
+                {
+                  "key": "use_language_checks",
+                  "value": "false",
+                  "type": "text"
+                },
+                {
+                  "key": "policy_profile",
+                  "type": "text",
+                  "value": "office_instruction_letters"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.collectionVariables.set(\"policy_idempotency_key\", pm.variables.replaceIn(\"{{$guid}}\"));"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", () => pm.response.to.have.status(200));",
+                  "const report = pm.response.json();",
+                  "pm.test(\"Отчёт сохранён\", () => pm.expect(report.id).to.be.a(\"string\"));",
+                  "pm.test(\"Есть трассировка\", () => pm.expect(pm.response.headers.get(\"X-Request-ID\")).to.be.a(\"string\"));",
+                  "if (pm.response.code === 200 && report.id) {",
+                  "  pm.collectionVariables.set(\"report_id\", report.id);",
+                  "  pm.collectionVariables.set(\"request_id\", report.request_id);",
+                  "}",
+                  "pm.test(\"Обнаружен ожидаемый дефект\", () => {",
+                  "  pm.expect(report.findings.map(f => f.code)).to.include(\"ORG_BODY_FONT_SIZE\");",
+                  "  pm.expect(report.provider).to.eql(\"none\");",
+                  "  pm.expect(report.status).to.eql(\"completed\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "04_body_indent — ORG_BODY_FIRST_LINE",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Idempotency-Key",
+                "value": "{{policy_idempotency_key}}"
+              }
+            ],
+            "url": "{{base_url}}/api/v1/analyze",
+            "description": "Синтетическое письмо с одной контролируемой правкой. Создать файлы: python scripts/create_letter_demos.py. Модель не вызывается. Если файл не найден, выберите его вручную в Body → file.",
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "file",
+                  "type": "file",
+                  "src": "examples/private/postman_cases/incorrect/04_body_indent.docx"
+                },
+                {
+                  "key": "use_llm",
+                  "value": "false",
+                  "type": "text"
+                },
+                {
+                  "key": "allow_external_transfer",
+                  "value": "false",
+                  "type": "text"
+                },
+                {
+                  "key": "document_type",
+                  "value": "unspecified",
+                  "type": "text"
+                },
+                {
+                  "key": "external_document_id",
+                  "value": "postman-synthetic-demo",
+                  "type": "text",
+                  "disabled": true
+                },
+                {
+                  "key": "use_language_checks",
+                  "value": "false",
+                  "type": "text"
+                },
+                {
+                  "key": "policy_profile",
+                  "type": "text",
+                  "value": "office_instruction_letters"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.collectionVariables.set(\"policy_idempotency_key\", pm.variables.replaceIn(\"{{$guid}}\"));"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", () => pm.response.to.have.status(200));",
+                  "const report = pm.response.json();",
+                  "pm.test(\"Отчёт сохранён\", () => pm.expect(report.id).to.be.a(\"string\"));",
+                  "pm.test(\"Есть трассировка\", () => pm.expect(pm.response.headers.get(\"X-Request-ID\")).to.be.a(\"string\"));",
+                  "if (pm.response.code === 200 && report.id) {",
+                  "  pm.collectionVariables.set(\"report_id\", report.id);",
+                  "  pm.collectionVariables.set(\"request_id\", report.request_id);",
+                  "}",
+                  "pm.test(\"Обнаружен ожидаемый дефект\", () => {",
+                  "  pm.expect(report.findings.map(f => f.code)).to.include(\"ORG_BODY_FIRST_LINE\");",
+                  "  pm.expect(report.provider).to.eql(\"none\");",
+                  "  pm.expect(report.status).to.eql(\"completed\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "05_body_spacing — ORG_BODY_LINE_SPACING",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Idempotency-Key",
+                "value": "{{policy_idempotency_key}}"
+              }
+            ],
+            "url": "{{base_url}}/api/v1/analyze",
+            "description": "Синтетическое письмо с одной контролируемой правкой. Создать файлы: python scripts/create_letter_demos.py. Модель не вызывается. Если файл не найден, выберите его вручную в Body → file.",
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "file",
+                  "type": "file",
+                  "src": "examples/private/postman_cases/incorrect/05_body_spacing.docx"
+                },
+                {
+                  "key": "use_llm",
+                  "value": "false",
+                  "type": "text"
+                },
+                {
+                  "key": "allow_external_transfer",
+                  "value": "false",
+                  "type": "text"
+                },
+                {
+                  "key": "document_type",
+                  "value": "unspecified",
+                  "type": "text"
+                },
+                {
+                  "key": "external_document_id",
+                  "value": "postman-synthetic-demo",
+                  "type": "text",
+                  "disabled": true
+                },
+                {
+                  "key": "use_language_checks",
+                  "value": "false",
+                  "type": "text"
+                },
+                {
+                  "key": "policy_profile",
+                  "type": "text",
+                  "value": "office_instruction_letters"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.collectionVariables.set(\"policy_idempotency_key\", pm.variables.replaceIn(\"{{$guid}}\"));"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", () => pm.response.to.have.status(200));",
+                  "const report = pm.response.json();",
+                  "pm.test(\"Отчёт сохранён\", () => pm.expect(report.id).to.be.a(\"string\"));",
+                  "pm.test(\"Есть трассировка\", () => pm.expect(pm.response.headers.get(\"X-Request-ID\")).to.be.a(\"string\"));",
+                  "if (pm.response.code === 200 && report.id) {",
+                  "  pm.collectionVariables.set(\"report_id\", report.id);",
+                  "  pm.collectionVariables.set(\"request_id\", report.request_id);",
+                  "}",
+                  "pm.test(\"Обнаружен ожидаемый дефект\", () => {",
+                  "  pm.expect(report.findings.map(f => f.code)).to.include(\"ORG_BODY_LINE_SPACING\");",
+                  "  pm.expect(report.provider).to.eql(\"none\");",
+                  "  pm.expect(report.status).to.eql(\"completed\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "06_recipient_size — ORG_RECIPIENT_FONT",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Idempotency-Key",
+                "value": "{{policy_idempotency_key}}"
+              }
+            ],
+            "url": "{{base_url}}/api/v1/analyze",
+            "description": "Синтетическое письмо с одной контролируемой правкой. Создать файлы: python scripts/create_letter_demos.py. Модель не вызывается. Если файл не найден, выберите его вручную в Body → file.",
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "file",
+                  "type": "file",
+                  "src": "examples/private/postman_cases/incorrect/06_recipient_size.docx"
+                },
+                {
+                  "key": "use_llm",
+                  "value": "false",
+                  "type": "text"
+                },
+                {
+                  "key": "allow_external_transfer",
+                  "value": "false",
+                  "type": "text"
+                },
+                {
+                  "key": "document_type",
+                  "value": "unspecified",
+                  "type": "text"
+                },
+                {
+                  "key": "external_document_id",
+                  "value": "postman-synthetic-demo",
+                  "type": "text",
+                  "disabled": true
+                },
+                {
+                  "key": "use_language_checks",
+                  "value": "false",
+                  "type": "text"
+                },
+                {
+                  "key": "policy_profile",
+                  "type": "text",
+                  "value": "office_instruction_letters"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.collectionVariables.set(\"policy_idempotency_key\", pm.variables.replaceIn(\"{{$guid}}\"));"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", () => pm.response.to.have.status(200));",
+                  "const report = pm.response.json();",
+                  "pm.test(\"Отчёт сохранён\", () => pm.expect(report.id).to.be.a(\"string\"));",
+                  "pm.test(\"Есть трассировка\", () => pm.expect(pm.response.headers.get(\"X-Request-ID\")).to.be.a(\"string\"));",
+                  "if (pm.response.code === 200 && report.id) {",
+                  "  pm.collectionVariables.set(\"report_id\", report.id);",
+                  "  pm.collectionVariables.set(\"request_id\", report.request_id);",
+                  "}",
+                  "pm.test(\"Обнаружен ожидаемый дефект\", () => {",
+                  "  pm.expect(report.findings.map(f => f.code)).to.include(\"ORG_RECIPIENT_FONT\");",
+                  "  pm.expect(report.provider).to.eql(\"none\");",
+                  "  pm.expect(report.status).to.eql(\"completed\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "07_executor_phone — ORG_EXECUTOR_CONTACT",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Idempotency-Key",
+                "value": "{{policy_idempotency_key}}"
+              }
+            ],
+            "url": "{{base_url}}/api/v1/analyze",
+            "description": "Синтетическое письмо с одной контролируемой правкой. Создать файлы: python scripts/create_letter_demos.py. Модель не вызывается. Если файл не найден, выберите его вручную в Body → file.",
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "file",
+                  "type": "file",
+                  "src": "examples/private/postman_cases/incorrect/07_executor_phone.docx"
+                },
+                {
+                  "key": "use_llm",
+                  "value": "false",
+                  "type": "text"
+                },
+                {
+                  "key": "allow_external_transfer",
+                  "value": "false",
+                  "type": "text"
+                },
+                {
+                  "key": "document_type",
+                  "value": "unspecified",
+                  "type": "text"
+                },
+                {
+                  "key": "external_document_id",
+                  "value": "postman-synthetic-demo",
+                  "type": "text",
+                  "disabled": true
+                },
+                {
+                  "key": "use_language_checks",
+                  "value": "false",
+                  "type": "text"
+                },
+                {
+                  "key": "policy_profile",
+                  "type": "text",
+                  "value": "office_instruction_letters"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.collectionVariables.set(\"policy_idempotency_key\", pm.variables.replaceIn(\"{{$guid}}\"));"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", () => pm.response.to.have.status(200));",
+                  "const report = pm.response.json();",
+                  "pm.test(\"Отчёт сохранён\", () => pm.expect(report.id).to.be.a(\"string\"));",
+                  "pm.test(\"Есть трассировка\", () => pm.expect(pm.response.headers.get(\"X-Request-ID\")).to.be.a(\"string\"));",
+                  "if (pm.response.code === 200 && report.id) {",
+                  "  pm.collectionVariables.set(\"report_id\", report.id);",
+                  "  pm.collectionVariables.set(\"request_id\", report.request_id);",
+                  "}",
+                  "pm.test(\"Обнаружен ожидаемый дефект\", () => {",
+                  "  pm.expect(report.findings.map(f => f.code)).to.include(\"ORG_EXECUTOR_CONTACT\");",
+                  "  pm.expect(report.provider).to.eql(\"none\");",
+                  "  pm.expect(report.status).to.eql(\"completed\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "08_executor_size — ORG_EXECUTOR_FONT",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Idempotency-Key",
+                "value": "{{policy_idempotency_key}}"
+              }
+            ],
+            "url": "{{base_url}}/api/v1/analyze",
+            "description": "Синтетическое письмо с одной контролируемой правкой. Создать файлы: python scripts/create_letter_demos.py. Модель не вызывается. Если файл не найден, выберите его вручную в Body → file.",
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "file",
+                  "type": "file",
+                  "src": "examples/private/postman_cases/incorrect/08_executor_size.docx"
+                },
+                {
+                  "key": "use_llm",
+                  "value": "false",
+                  "type": "text"
+                },
+                {
+                  "key": "allow_external_transfer",
+                  "value": "false",
+                  "type": "text"
+                },
+                {
+                  "key": "document_type",
+                  "value": "unspecified",
+                  "type": "text"
+                },
+                {
+                  "key": "external_document_id",
+                  "value": "postman-synthetic-demo",
+                  "type": "text",
+                  "disabled": true
+                },
+                {
+                  "key": "use_language_checks",
+                  "value": "false",
+                  "type": "text"
+                },
+                {
+                  "key": "policy_profile",
+                  "type": "text",
+                  "value": "office_instruction_letters"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.collectionVariables.set(\"policy_idempotency_key\", pm.variables.replaceIn(\"{{$guid}}\"));"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", () => pm.response.to.have.status(200));",
+                  "const report = pm.response.json();",
+                  "pm.test(\"Отчёт сохранён\", () => pm.expect(report.id).to.be.a(\"string\"));",
+                  "pm.test(\"Есть трассировка\", () => pm.expect(pm.response.headers.get(\"X-Request-ID\")).to.be.a(\"string\"));",
+                  "if (pm.response.code === 200 && report.id) {",
+                  "  pm.collectionVariables.set(\"report_id\", report.id);",
+                  "  pm.collectionVariables.set(\"request_id\", report.request_id);",
+                  "}",
+                  "pm.test(\"Обнаружен ожидаемый дефект\", () => {",
+                  "  pm.expect(report.findings.map(f => f.code)).to.include(\"ORG_EXECUTOR_FONT\");",
+                  "  pm.expect(report.provider).to.eql(\"none\");",
+                  "  pm.expect(report.status).to.eql(\"completed\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "09_date_format — ORG_DATE_FORMAT",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Idempotency-Key",
+                "value": "{{policy_idempotency_key}}"
+              }
+            ],
+            "url": "{{base_url}}/api/v1/analyze",
+            "description": "Синтетическое письмо с одной контролируемой правкой. Создать файлы: python scripts/create_letter_demos.py. Модель не вызывается. Если файл не найден, выберите его вручную в Body → file.",
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "file",
+                  "type": "file",
+                  "src": "examples/private/postman_cases/incorrect/09_date_format.docx"
+                },
+                {
+                  "key": "use_llm",
+                  "value": "false",
+                  "type": "text"
+                },
+                {
+                  "key": "allow_external_transfer",
+                  "value": "false",
+                  "type": "text"
+                },
+                {
+                  "key": "document_type",
+                  "value": "unspecified",
+                  "type": "text"
+                },
+                {
+                  "key": "external_document_id",
+                  "value": "postman-synthetic-demo",
+                  "type": "text",
+                  "disabled": true
+                },
+                {
+                  "key": "use_language_checks",
+                  "value": "false",
+                  "type": "text"
+                },
+                {
+                  "key": "policy_profile",
+                  "type": "text",
+                  "value": "office_instruction_letters"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.collectionVariables.set(\"policy_idempotency_key\", pm.variables.replaceIn(\"{{$guid}}\"));"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", () => pm.response.to.have.status(200));",
+                  "const report = pm.response.json();",
+                  "pm.test(\"Отчёт сохранён\", () => pm.expect(report.id).to.be.a(\"string\"));",
+                  "pm.test(\"Есть трассировка\", () => pm.expect(pm.response.headers.get(\"X-Request-ID\")).to.be.a(\"string\"));",
+                  "if (pm.response.code === 200 && report.id) {",
+                  "  pm.collectionVariables.set(\"report_id\", report.id);",
+                  "  pm.collectionVariables.set(\"request_id\", report.request_id);",
+                  "}",
+                  "pm.test(\"Обнаружен ожидаемый дефект\", () => {",
+                  "  pm.expect(report.findings.map(f => f.code)).to.include(\"ORG_DATE_FORMAT\");",
+                  "  pm.expect(report.provider).to.eql(\"none\");",
+                  "  pm.expect(report.status).to.eql(\"completed\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "10_signature_font — ORG_SIGNATURE_FONT",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Idempotency-Key",
+                "value": "{{policy_idempotency_key}}"
+              }
+            ],
+            "url": "{{base_url}}/api/v1/analyze",
+            "description": "Синтетическое письмо с одной контролируемой правкой. Создать файлы: python scripts/create_letter_demos.py. Модель не вызывается. Если файл не найден, выберите его вручную в Body → file.",
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "file",
+                  "type": "file",
+                  "src": "examples/private/postman_cases/incorrect/10_signature_font.docx"
+                },
+                {
+                  "key": "use_llm",
+                  "value": "false",
+                  "type": "text"
+                },
+                {
+                  "key": "allow_external_transfer",
+                  "value": "false",
+                  "type": "text"
+                },
+                {
+                  "key": "document_type",
+                  "value": "unspecified",
+                  "type": "text"
+                },
+                {
+                  "key": "external_document_id",
+                  "value": "postman-synthetic-demo",
+                  "type": "text",
+                  "disabled": true
+                },
+                {
+                  "key": "use_language_checks",
+                  "value": "false",
+                  "type": "text"
+                },
+                {
+                  "key": "policy_profile",
+                  "type": "text",
+                  "value": "office_instruction_letters"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.collectionVariables.set(\"policy_idempotency_key\", pm.variables.replaceIn(\"{{$guid}}\"));"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", () => pm.response.to.have.status(200));",
+                  "const report = pm.response.json();",
+                  "pm.test(\"Отчёт сохранён\", () => pm.expect(report.id).to.be.a(\"string\"));",
+                  "pm.test(\"Есть трассировка\", () => pm.expect(pm.response.headers.get(\"X-Request-ID\")).to.be.a(\"string\"));",
+                  "if (pm.response.code === 200 && report.id) {",
+                  "  pm.collectionVariables.set(\"report_id\", report.id);",
+                  "  pm.collectionVariables.set(\"request_id\", report.request_id);",
+                  "}",
+                  "pm.test(\"Обнаружен ожидаемый дефект\", () => {",
+                  "  pm.expect(report.findings.map(f => f.code)).to.include(\"ORG_SIGNATURE_FONT\");",
+                  "  pm.expect(report.provider).to.eql(\"none\");",
+                  "  pm.expect(report.status).to.eql(\"completed\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

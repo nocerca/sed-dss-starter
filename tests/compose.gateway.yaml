@@ -1,0 +1,92 @@
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: gateway_test
+      POSTGRES_USER: synthetic
+      POSTGRES_PASSWORD: synthetic-local-password
+    tmpfs:
+      - /var/lib/postgresql/data:size=256m
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U synthetic -d gateway_test"]
+      interval: 2s
+      timeout: 3s
+      retries: 20
+    networks: [isolated]
+  mock-model:
+    image: sed-dss-gateway-test-api
+    build:
+      context: ..
+      dockerfile: Dockerfile
+    command: ["python", "/fixtures/mock_model.py"]
+    volumes:
+      - ./gateway/mock_model.py:/fixtures/mock_model.py:ro
+    networks: [isolated]
+  openclaw:
+    image: ghcr.io/openclaw/openclaw:2026.9.3
+    user: "1000:1000"
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    entrypoint: ["node", "/opt/sed-dss/openclaw-entrypoint.mjs"]
+    environment:
+      OPENCLAW_STATE_DIR: /home/node/.openclaw
+      OPENCLAW_CONFIG_PATH: /home/node/.openclaw/openclaw.json
+      OPENCLAW_CONFIG_READONLY: "1"
+      OPENCLAW_GATEWAY_TOKEN: test-gateway-token-not-a-real-secret-0000
+      OPENCLAW_DISABLE_BONJOUR: "1"
+      MODEL_BACKEND: zai
+      ZAI_API_KEY: synthetic-zai-api-key
+    volumes:
+      - ../deploy/openclaw-entrypoint.mjs:/opt/sed-dss/openclaw-entrypoint.mjs:ro
+      - ../deploy/openclaw-config.mjs:/opt/sed-dss/base-config.mjs:ro
+      - ./gateway/mock_config.mjs:/opt/sed-dss/openclaw-config.mjs:ro
+    tmpfs:
+      - /home/node/.openclaw:uid=1000,gid=1000,mode=0700,size=128m
+      - /home/node/.cache:uid=1000,gid=1000,mode=0700,size=128m
+      - /tmp:mode=1777,size=256m
+    depends_on: [mock-model]
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:18789/healthz').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 3s
+      timeout: 3s
+      retries: 30
+      start_period: 60s
+    networks: [isolated]
+  check:
+    image: sed-dss-gateway-test-api
+    pull_policy: never
+    command: ["python", "/fixtures/check_transport.py"]
+    volumes:
+      - ./gateway/check_transport.py:/fixtures/check_transport.py:ro
+      - ../scripts/smoke_test.py:/fixtures/smoke_test.py:ro
+    depends_on:
+      openclaw:
+        condition: service_healthy
+      api:
+        condition: service_healthy
+    networks: [isolated]
+  api:
+    image: sed-dss-gateway-test-api
+    pull_policy: never
+    environment:
+      DATABASE_URL: postgresql+psycopg://synthetic:synthetic-local-password@db:5432/gateway_test
+      APP_API_KEY: synthetic-api-key
+      LLM_PROVIDER: openclaw
+      ALLOW_EXTERNAL_LLM: "true"
+      OPENCLAW_BASE_URL: http://openclaw:18789/v1
+      OPENCLAW_API_KEY: test-gateway-token-not-a-real-secret-0000
+      OPENCLAW_MODEL: openclaw/sed-dss
+      IDEMPOTENCY_SECRET: synthetic-local-idempotency-secret-0000
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health/ready', timeout=2)"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+    networks: [isolated]
+networks:
+  isolated:
+    internal: true

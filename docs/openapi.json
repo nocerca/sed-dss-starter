@@ -1,0 +1,1402 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "SED DSS — анализ исходящих писем",
+    "description": "\nСервис поддержки решений для **исходящих деловых писем DOCX**.\nЗамечания проверяет человек. Оригиналы не изменяются, письма не отправляются.\n\n### Как выполнить первую проверку\n1. Нажмите **Authorize** и вставьте значение **APP_API_KEY** из локального `.env`.\n   Вводите только значение, без `Bearer`. `ZAI_API_KEY` и токен OpenClaw сюда не подходят.\n2. Откройте **Анализ → POST /api/v1/analyze → Try it out** и выберите DOCX.\n3. Для локальной проверки оставьте `use_llm=false`, `allow_external_transfer=false`.\n   Для реализованных проверок предоставленной инструкции выберите\n   `policy_profile=office_instruction_letters`. Результаты — `metrics.policy_checks`;\n   неизвестные свойства/роли не считаются нарушениями.\n   Для отдельной локальной орфографии/грамматики задайте `use_language_checks=true`\n   при запущенном профиле Docker `language` и `LANGUAGE_TOOL_ENABLED=true`.\n4. Для модели задайте оба флага `true`. На сервере также должны быть настроены\n   `LLM_PROVIDER=openclaw` и `ALLOW_EXTERNAL_LLM=true`.\n5. Изучите `status`, `mode`, `findings` и `warnings`. В **Example Value** приведены\n   искусственные примеры, в **Schema** — описания всех полей, включая вложенные.\n\n### Режим и результат обработки — разные понятия\n| mode: как проверяли | status: чем закончилась обработка |\n|---|---|\n| `rules_only` — локальная обработка, без LLM | `completed` — запрошенные локальные проверки завершились |\n| `hybrid` — правила и модель через OpenClaw | `completed` — обе части завершились |\n| `rules_fallback` — сохранились локальные результаты после ошибки модели | `partial` — одна из запрошенных дополнительных проверок не завершилась |\n\nСохранённый отчёт может иметь `status=processing`: обработка начата или была прервана\nдо фиксации результата. `completed` **не означает**, что письмо правильное или замечания достоверны.\nHTTP 200 со `status=partial` также не означает успех всех частей. Даже при `mode=hybrid`\nможет быть `partial`, если LLM завершилась, а локальный LanguageTool — нет.\n\n### Границы проверки\nМодель получает до **12 000 символов извлечённого текста** и до трёх найденных фрагментов\nбазы знаний (до 1300 символов каждый). Изображения, скриншоты и визуальный вид страниц ей\nне передаются, но передаются ограниченные сведения о заголовках и наличии картинок.\nАвтоматического обезличивания нет. Локальный LanguageTool выполняет начальную проверку\nрусской орфографии, части грамматики и пунктуации; полной языковой экспертизы,\nпроверки всех реквизитов и соответствия ГОСТ пока нет.\n\nВнешняя передача требует глобального разрешения и согласия **в каждом запросе**.\nПараметр `document_type` задаёт вызывающая сторона. Локальный эвристический профиль\nможет предупредить о вероятной учебной работе, но не классифицирует жанр надёжно и не блокирует файл.\n\nВсе `/api/v1/*` требуют ключ приложения. `/health/*` открыты и не проверяют модель.\nКаждый ответ получает `X-Request-ID` для поиска запроса. Не отправляйте свой идентификатор\nв этом заголовке: сервер генерирует его самостоятельно.\nЗаголовок `Server-Timing` показывает длительность текущей серверной обработки;\n`metrics.timings_ms` содержит сохранённые замеры отдельных этапов анализа.\n",
+    "version": "0.5.0"
+  },
+  "paths": {
+    "/health/live": {
+      "get": {
+        "tags": [
+          "Сервис"
+        ],
+        "summary": "Проверить живость API",
+        "description": "Открытый endpoint без ключа. status=ok означает, что процесс отвечает; БД, шлюз и модель этим запросом не проверяются.",
+        "operationId": "health_live_health_live_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/health/ready": {
+      "get": {
+        "tags": [
+          "Сервис"
+        ],
+        "summary": "Проверить доступность БД",
+        "description": "Открытый endpoint: status=ready при успешном запросе к БД. Не проверяет модель или OpenClaw: локальные правила должны работать независимо от них.",
+        "operationId": "health_ready_health_ready_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "503": {
+            "description": "БД недоступна; status=db_unavailable."
+          }
+        }
+      }
+    },
+    "/api/v1/capabilities": {
+      "get": {
+        "tags": [
+          "Сервис"
+        ],
+        "summary": "Посмотреть возможности и текущие настройки",
+        "description": "Показывает конфигурацию сервиса, не выполняя модельный запрос.\n\n| Поле ответа | Значение |\n|---|---|\n| `accepted_analysis_formats` | Расширения файлов для анализа: DOCX |\n| `accepted_knowledge_formats` | Форматы материалов базы знаний: DOCX/TXT |\n| `current_provider` | Настроенный транспорт: `none` или `openclaw`, а не название модели |\n| `external_llm_enabled` | Глобальное разрешение; согласие запроса всё равно обязательно |\n| `required_llm_gateway` | Обязательный шлюз `openclaw` |\n| `direct_model_calls` | `false`: основной API не вызывает внешнюю модель напрямую |\n| `max_document_bytes` | Настроенный предел размера одного загружаемого файла в байтах |\n| `local_language_checks_available` | Включён ли локальный адаптер LanguageTool; его текущая доступность отдельно не проверяется |\n| `automatic_document_rewrite` | `false`: сервис не переписывает оригинал |\n| `sed_integration` | Доступный интерфейс будущей интеграции: `REST API` |\n\nВключённые флаги не подтверждают действительность ключа, квоту или доступность модели.",
+        "operationId": "capabilities_api_v1_capabilities_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "401": {
+            "description": "Нет корректного X-API-Key. Нужен APP_API_KEY приложения, а не ключ модели."
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ]
+      }
+    },
+    "/api/v1/analyze": {
+      "post": {
+        "tags": [
+          "Анализ"
+        ],
+        "summary": "Проверить исходящее письмо DOCX",
+        "description": "Передайте файл через **multipart/form-data**. Content-Type с boundary формирует клиент.\nAPI разберёт DOCX, применит включённые правила и сохранит отчёт.\n\n- **Без модели:** `use_llm=false`. Согласие не запускает модель само по себе.\n- **Инструкция:** `policy_profile=office_instruction_letters` явно выбирает профиль\n  организации. Выполняются 16 реализованных проверок/диагностик; остальные положения\n  каталога, геометрия и полномочия не подтверждаются. Без поля остаются прежние эвристики.\n- **Локальный язык:** `use_language_checks=true` запускает внутренний LanguageTool;\n  согласие на внешнюю передачу для него не нужно. Ошибка модуля даёт `partial`, результаты правил сохраняются.\n- **С моделью:** `use_llm=true`, `allow_external_transfer=true` и разрешение на сервере.\n  Внешний вызов выполняется только через OpenClaw. При предусмотренной ошибке модели\n  вернётся HTTP 200 с `status=partial` и сохранёнными результатами правил.\n- **Повтор:** необязательный `Idempotency-Key` сохраняйте для повторной отправки того же\n  запроса. Изменение файла, имени, метаданных или флагов с прежним ключом даст 409.\n  Без заголовка каждый запрос создаёт новый анализ. Пустой заголовок недопустим:\n  либо укажите ключ, либо уберите заголовок целиком. Это не ключ авторизации.\n\nДля повторения модельного запроса согласие и серверное разрешение проверяются заново.\nЕсли исход вызова неизвестен и отчёт остался `processing`, автоматической повторной\nпередачи не будет. Выдача того же `partial` по прежнему ключу тоже не перезапускает модель.\nФлаг локальной языковой проверки также входит в отпечаток запроса.\n\nМодельные выводы об отсутствующем содержимом, визуальном оформлении, неподтверждённых нормах,\nцитаты из одних заголовков и повторы отбрасываются консервативными эвристиками.\nСчётчики находятся в `metrics.llm_validation`; фильтр может пропустить ошибку и отклонить\nполезное замечание. До пяти модельных замечаний принимаются за один анализ.\n\nВ отчёте сохраняются имя, метаданные и цитаты; полный исходный DOCX не сохраняется.\nСам текст может содержать персональные данные — автоматического удаления таких данных нет.\nВсе примеры ниже **синтетические**. Время ответа внешней модели может превышать минуту;\nувеличение таймаута клиента не гарантирует завершения модели.",
+        "operationId": "analyze_api_v1_analyze_post",
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "pattern": "^[A-Za-z0-9_.:-]{8,128}$"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Необязательный идентификатор одной операции анализа; не API-ключ и не секрет модели. Например UUID. 8–128 символов ASCII: буквы, цифры, _, ., :, -. Для повтора тех же байтов файла, имени и параметров используйте тот же ключ: вернётся прежний отчёт. Изменённый запрос — 409, обработка ещё идёт — 409, отчёт удалён — 410. Для нового анализа нужен новый ключ. Если не нужен — уберите заголовок целиком; пустое значение даёт 422. {{llm_idempotency_key}} — переменная коллекции Postman, не буквальное значение для Swagger.",
+              "title": "Idempotency-Key"
+            },
+            "description": "Необязательный идентификатор одной операции анализа; не API-ключ и не секрет модели. Например UUID. 8–128 символов ASCII: буквы, цифры, _, ., :, -. Для повтора тех же байтов файла, имени и параметров используйте тот же ключ: вернётся прежний отчёт. Изменённый запрос — 409, обработка ещё идёт — 409, отчёт удалён — 410. Для нового анализа нужен новый ключ. Если не нужен — уберите заголовок целиком; пустое значение даёт 422. {{llm_idempotency_key}} — переменная коллекции Postman, не буквальное значение для Swagger."
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_analyze_api_v1_analyze_post"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Сохранённый отчёт. Проверьте status и warnings: partial тоже возвращается с HTTP 200.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AnalysisResponse"
+                },
+                "examples": {
+                  "rules_only": {
+                    "summary": "Правила завершились без модели",
+                    "description": "Искусственный пример формы ответа, не результат реальной проверки.",
+                    "value": {
+                      "id": "00000000-0000-4000-8000-000000000001",
+                      "filename": "synthetic_letter.docx",
+                      "mode": "rules_only",
+                      "status": "completed",
+                      "provider": "none",
+                      "findings": [
+                        {
+                          "code": "CONTENT_VAGUE_DEADLINE",
+                          "category": "content",
+                          "severity": "warning",
+                          "message": "Срок сформулирован неопределённо.",
+                          "evidence": "в кратчайшие сроки",
+                          "recommendation": "Укажите согласованный срок.",
+                          "source_ref": "LOCAL-DEMO-CONTENT-001",
+                          "method": "rule",
+                          "verified": true,
+                          "fragment_id": "body/p[0]",
+                          "rule_version": "1.0.1"
+                        }
+                      ],
+                      "metrics": {
+                        "total_findings": 1,
+                        "by_category": {
+                          "content": 1
+                        },
+                        "by_severity": {
+                          "warning": 1
+                        },
+                        "paragraph_count": 1,
+                        "applied_rules": {
+                          "EMPTY_DOCUMENT": "1.0.1",
+                          "CONTENT_VAGUE_DEADLINE": "1.0.1",
+                          "CONTENT_VAGUE_OBJECT": "1.0.1",
+                          "LANG_LONG_PARAGRAPH": "1.0.1",
+                          "FMT_MANY_FONTS": "1.0.1"
+                        }
+                      },
+                      "warnings": [
+                        "Демонстрационные эвристики не являются формальной сертификацией по ГОСТ."
+                      ],
+                      "created_at": "2026-01-01T12:00:00Z",
+                      "external_document_id": "synthetic-sed-001",
+                      "request_id": "00000000-0000-4000-8000-000000000002",
+                      "ruleset_version": "letters-0.5.0",
+                      "document_type": "request"
+                    }
+                  },
+                  "hybrid": {
+                    "summary": "Правила и модель завершились: пример замечаний обоих методов",
+                    "description": "Искусственный пример формы ответа, не результат реальной проверки.",
+                    "value": {
+                      "id": "00000000-0000-4000-8000-000000000001",
+                      "filename": "synthetic_letter.docx",
+                      "mode": "hybrid",
+                      "status": "completed",
+                      "provider": "openclaw",
+                      "findings": [
+                        {
+                          "code": "CONTENT_VAGUE_DEADLINE",
+                          "category": "content",
+                          "severity": "warning",
+                          "message": "Срок сформулирован неопределённо.",
+                          "evidence": "в кратчайшие сроки",
+                          "recommendation": "Укажите согласованный срок.",
+                          "source_ref": "LOCAL-DEMO-CONTENT-001",
+                          "method": "rule",
+                          "verified": true,
+                          "fragment_id": "body/p[0]",
+                          "rule_version": "1.0.1"
+                        },
+                        {
+                          "code": "SEMANTIC_DEMO",
+                          "category": "content",
+                          "severity": "info",
+                          "message": "Состав запрашиваемых материалов можно уточнить.",
+                          "evidence": "перечень учебных материалов",
+                          "recommendation": "При необходимости укажите, какие материалы ожидаются.",
+                          "method": "llm",
+                          "verified": false
+                        }
+                      ],
+                      "metrics": {
+                        "total_findings": 2,
+                        "by_category": {
+                          "content": 2
+                        },
+                        "by_severity": {
+                          "warning": 1,
+                          "info": 1
+                        },
+                        "paragraph_count": 1,
+                        "applied_rules": {
+                          "EMPTY_DOCUMENT": "1.0.1",
+                          "CONTENT_VAGUE_DEADLINE": "1.0.1",
+                          "CONTENT_VAGUE_OBJECT": "1.0.1",
+                          "LANG_LONG_PARAGRAPH": "1.0.1",
+                          "FMT_MANY_FONTS": "1.0.1"
+                        }
+                      },
+                      "warnings": [
+                        "Демонстрационные эвристики не являются формальной сертификацией по ГОСТ.",
+                        "Замечания модели требуют проверки человеком."
+                      ],
+                      "created_at": "2026-01-01T12:00:00Z",
+                      "external_document_id": "synthetic-sed-001",
+                      "request_id": "00000000-0000-4000-8000-000000000002",
+                      "ruleset_version": "letters-0.5.0",
+                      "document_type": "request"
+                    }
+                  },
+                  "partial": {
+                    "summary": "Ошибка модели; результаты правил сохранены",
+                    "description": "Искусственный пример формы ответа, не результат реальной проверки.",
+                    "value": {
+                      "id": "00000000-0000-4000-8000-000000000001",
+                      "filename": "synthetic_letter.docx",
+                      "mode": "rules_fallback",
+                      "status": "partial",
+                      "provider": "openclaw",
+                      "findings": [
+                        {
+                          "code": "CONTENT_VAGUE_DEADLINE",
+                          "category": "content",
+                          "severity": "warning",
+                          "message": "Срок сформулирован неопределённо.",
+                          "evidence": "в кратчайшие сроки",
+                          "recommendation": "Укажите согласованный срок.",
+                          "source_ref": "LOCAL-DEMO-CONTENT-001",
+                          "method": "rule",
+                          "verified": true,
+                          "fragment_id": "body/p[0]",
+                          "rule_version": "1.0.1"
+                        }
+                      ],
+                      "metrics": {
+                        "total_findings": 1,
+                        "by_category": {
+                          "content": 1
+                        },
+                        "by_severity": {
+                          "warning": 1
+                        },
+                        "paragraph_count": 1,
+                        "applied_rules": {
+                          "EMPTY_DOCUMENT": "1.0.1",
+                          "CONTENT_VAGUE_DEADLINE": "1.0.1",
+                          "CONTENT_VAGUE_OBJECT": "1.0.1",
+                          "LANG_LONG_PARAGRAPH": "1.0.1",
+                          "FMT_MANY_FONTS": "1.0.1"
+                        }
+                      },
+                      "warnings": [
+                        "Демонстрационные эвристики не являются формальной сертификацией по ГОСТ.",
+                        "OpenClaw недоступен: HTTP 503"
+                      ],
+                      "created_at": "2026-01-01T12:00:00Z",
+                      "external_document_id": "synthetic-sed-001",
+                      "request_id": "00000000-0000-4000-8000-000000000002",
+                      "ruleset_version": "letters-0.5.0",
+                      "document_type": "request"
+                    }
+                  }
+                }
+              }
+            },
+            "headers": {
+              "X-Request-ID": {
+                "description": "UUID текущего HTTP-запроса, сгенерированный сервером. В повторном ответе отличается от request_id исходного отчёта.",
+                "schema": {
+                  "type": "string",
+                  "format": "uuid"
+                }
+              },
+              "Idempotency-Replayed": {
+                "description": "Присутствует со значением true при выдаче прежнего отчёта без нового анализа.",
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "true"
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Нет корректного X-API-Key. Нужен APP_API_KEY приложения, а не ключ модели."
+          },
+          "409": {
+            "description": "Нет согласия/серверного разрешения; ключ использован для другого запроса; анализ ещё идёт; либо IDEMPOTENCY_SECRET не настроен.",
+            "headers": {
+              "Retry-After": {
+                "description": "При processing: 2 секунды до повторной проверки тем же ключом. Новый анализ не запускается.",
+                "schema": {
+                  "type": "string",
+                  "example": "2"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "example": {
+                  "detail": "Для внешней LLM нужны настроенный провайдер, ALLOW_EXTERNAL_LLM=true и allow_external_transfer=true в каждом запросе"
+                }
+              }
+            }
+          },
+          "410": {
+            "description": "Отчёт по этому ключу удалён или недоступен; повторный анализ не запускается."
+          },
+          "413": {
+            "description": "Размер файла превышает настроенный предел."
+          },
+          "415": {
+            "description": "Неподдерживаемое расширение: для анализа нужен DOCX."
+          },
+          "422": {
+            "description": "Неверные параметры (включая пустой Idempotency-Key), пустой или повреждённый DOCX. detail может быть строкой либо списком ошибок валидации."
+          }
+        }
+      }
+    },
+    "/api/v1/reports": {
+      "get": {
+        "tags": [
+          "Отчёты"
+        ],
+        "summary": "Получить список сохранённых отчётов",
+        "description": "Отчёты от новых к старым по времени создания. Возвращается массив, без нового анализа или передачи в модель. Может содержать partial и processing; пустой массив означает отсутствие записей по фильтру.",
+        "operationId": "list_reports_api_v1_reports_get",
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 100,
+              "minimum": 1,
+              "description": "Размер страницы: 1–100 отчётов, по умолчанию 20.",
+              "default": 20,
+              "title": "Limit"
+            },
+            "description": "Размер страницы: 1–100 отчётов, по умолчанию 20."
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "description": "Сколько отчётов пропустить для пагинации; по умолчанию 0.",
+              "default": 0,
+              "title": "Offset"
+            },
+            "description": "Сколько отчётов пропустить для пагинации; по умолчанию 0."
+          },
+          {
+            "name": "request_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Необязательный UUID исходного запроса анализа из поля request_id отчёта. Фильтр не ищет по external_document_id или ID произвольного повторного запроса.",
+              "title": "Request Id"
+            },
+            "description": "Необязательный UUID исходного запроса анализа из поля request_id отчёта. Фильтр не ищет по external_document_id или ID произвольного повторного запроса."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/AnalysisResponse"
+                  },
+                  "title": "Response List Reports Api V1 Reports Get"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Нет корректного X-API-Key. Нужен APP_API_KEY приложения, а не ключ модели."
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/reports/{report_id}": {
+      "get": {
+        "tags": [
+          "Отчёты"
+        ],
+        "summary": "Прочитать сохранённый отчёт",
+        "description": "Возвращает сохранённый результат по id без повторного вызова модели. У processing результаты предварительные; после прерывания автоматического перезапуска нет. Поля подробно описаны в схеме AnalysisResponse.",
+        "operationId": "report_api_v1_reports__report_id__get",
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "report_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "UUID из поля id ответа анализа; это не external_document_id, request_id или Idempotency-Key.",
+              "title": "Report Id"
+            },
+            "description": "UUID из поля id ответа анализа; это не external_document_id, request_id или Idempotency-Key."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AnalysisResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Нет корректного X-API-Key. Нужен APP_API_KEY приложения, а не ключ модели."
+          },
+          "404": {
+            "description": "Запись с таким идентификатором не найдена."
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "Отчёты"
+        ],
+        "summary": "Удалить отчёт",
+        "description": "Намеренно удаляет сохранённый отчёт, не исходный файл и не корпус. Успешный ответ 204 без тела. Маркер идемпотентности сохраняется: повтор POST с прежним ключом даст 410 и не вызовет модель заново.",
+        "operationId": "delete_report_api_v1_reports__report_id__delete",
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "report_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "UUID отчёта, который нужно намеренно удалить.",
+              "title": "Report Id"
+            },
+            "description": "UUID отчёта, который нужно намеренно удалить."
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "401": {
+            "description": "Нет корректного X-API-Key. Нужен APP_API_KEY приложения, а не ключ модели."
+          },
+          "404": {
+            "description": "Запись с таким идентификатором не найдена."
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/rules": {
+      "get": {
+        "tags": [
+          "Правила"
+        ],
+        "summary": "Посмотреть текущие правила и применимость",
+        "description": "Возвращает текущие спецификации правил, включая отключённые.\n\n| Поле элемента | Значение |\n|---|---|\n| `code`, `version` | Стабильный код и версия условия проверки |\n| `category`, `severity` | Категория и предварительная критичность замечания |\n| `description`, `recommendation` | Объяснение условия и предлагаемое действие |\n| `implementation` | Алгоритм: поиск фразы, пустого текста, длинного абзаца, числа шрифтов или letter_policy |\n| `patterns`, `threshold` | Фразы и числовой порог соответствующего алгоритма |\n| `source.kind/ref/title/uri/verified` | Тип, идентификатор, название, ссылка и подтверждение основания |\n| `applicability.document_types/templates/policy_profiles/locations/explanation` | Типы писем, шаблоны, выбранные профили, части DOCX и границы применимости |\n| `policy_specification` | Условия, исключения, ожидаемые свойства, опорные абзацы и реализованная область проверки профиля; null у эвристик |\n| `enabled` | Включено ли правило; для выполнения также требуется совпадение применимости |\n\nПустой список шаблонов не ограничивает шаблон. Тип `unspecified` должен входить в список\nприменимых типов явно. Источники `heuristic` — экспериментальные эвристики,\n`instruction` — предоставленная организационная инструкция. Это не сертификация ГОСТ.\nПрофиль выбирается явно; source.verified=false не подменяет экспертное подтверждение.\n`source.verified` описывает источник и отличается от `verified`\nу замечания. Источник модели сам по себе не доказывает применимость требования.",
+        "operationId": "rules_api_v1_rules_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "401": {
+            "description": "Нет корректного X-API-Key. Нужен APP_API_KEY приложения, а не ключ модели."
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ]
+      }
+    },
+    "/api/v1/rules/{code}/versions": {
+      "get": {
+        "tags": [
+          "Правила"
+        ],
+        "summary": "Посмотреть сохранённые версии правила",
+        "description": "Массив неизменяемых спецификаций code/version с источником и применимостью. Формат элементов описан в GET /rules; поле enabled здесь не возвращается. Это версии правил, не версии ГОСТ.",
+        "operationId": "rule_versions_api_v1_rules__code__versions_get",
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "code",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "Код правила из /rules или rule-замечания, например CONTENT_VAGUE_DEADLINE. Код, придуманный моделью, может отсутствовать в реестре.",
+              "title": "Code"
+            },
+            "description": "Код правила из /rules или rule-замечания, например CONTENT_VAGUE_DEADLINE. Код, придуманный моделью, может отсутствовать в реестре."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "401": {
+            "description": "Нет корректного X-API-Key. Нужен APP_API_KEY приложения, а не ключ модели."
+          },
+          "404": {
+            "description": "Запись с таким идентификатором не найдена."
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/knowledge/documents": {
+      "get": {
+        "tags": [
+          "База знаний"
+        ],
+        "summary": "Получить метаданные базы знаний",
+        "description": "Массив материалов от новых к старым. Текст документов не возвращается; модель не вызывается. Пустой список означает, что материалов пока нет.",
+        "operationId": "list_knowledge_api_v1_knowledge_documents_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/KnowledgeItem"
+                  },
+                  "type": "array",
+                  "title": "Response List Knowledge Api V1 Knowledge Documents Get"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Нет корректного X-API-Key. Нужен APP_API_KEY приложения, а не ключ модели."
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ]
+      },
+      "post": {
+        "tags": [
+          "База знаний"
+        ],
+        "summary": "Добавить разрешённый материал",
+        "description": "Сохраняет извлечённый текст DOCX/TXT в PostgreSQL до явного удаления. Сам этот запрос не вызывает модель. Материал может попасть в найденный контекст будущего модельного анализа при двойном согласии. Ответ содержит только метаданные. Присвоение normative не подтверждает нормативный статус или применимость.",
+        "operationId": "add_knowledge_api_v1_knowledge_documents_post",
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_add_knowledge_api_v1_knowledge_documents_post"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/KnowledgeItem"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Нет корректного X-API-Key. Нужен APP_API_KEY приложения, а не ключ модели."
+          },
+          "413": {
+            "description": "Файл превышает лимит или извлечённый текст длиннее 150 000 символов."
+          },
+          "422": {
+            "description": "Неверный kind, неподдерживаемый/повреждённый файл или нет распознанного текста."
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ]
+      }
+    },
+    "/api/v1/knowledge/documents/{item_id}": {
+      "delete": {
+        "tags": [
+          "База знаний"
+        ],
+        "summary": "Удалить материал базы знаний",
+        "description": "Намеренно удаляет материал и сохранённый текст из базы знаний. Ответ 204 без тела. Прежние отчёты и цитаты в них не удаляются.",
+        "operationId": "delete_knowledge_api_v1_knowledge_documents__item_id__delete",
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "item_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "UUID из id материала базы знаний; это не UUID отчёта.",
+              "title": "Item Id"
+            },
+            "description": "UUID из id материала базы знаний; это не UUID отчёта."
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "401": {
+            "description": "Нет корректного X-API-Key. Нужен APP_API_KEY приложения, а не ключ модели."
+          },
+          "404": {
+            "description": "Запись с таким идентификатором не найдена."
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "AnalysisResponse": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id",
+            "description": "UUID отчёта, созданный сервисом. Используется в /api/v1/reports/{report_id}. При идемпотентном повторе остаётся прежним."
+          },
+          "filename": {
+            "type": "string",
+            "title": "Filename",
+            "description": "Имя загруженного DOCX без пути, максимум 255 символов. Оригинальный файл не изменяется. Само имя не включается в модельный запрос.",
+            "examples": [
+              "synthetic_letter.docx"
+            ]
+          },
+          "mode": {
+            "type": "string",
+            "title": "Mode",
+            "description": "Как выполнялась проверка: rules_only — локальная обработка без LLM, включая LanguageTool по отдельному флагу; hybrid — локальные проверки и завершённая модельная обработка; rules_fallback — локальные результаты после ошибки LLM. hybrid не требует наличия модельных замечаний и не гарантирует их достоверность.",
+            "examples": [
+              "rules_only",
+              "hybrid",
+              "rules_fallback"
+            ]
+          },
+          "provider": {
+            "type": "string",
+            "title": "Provider",
+            "description": "LLM-транспорт этого отчёта: none — без модели; openclaw — обращение через обязательный шлюз, в том числе при его ошибке. Это не имя внешнего backend и не подтверждение его успешного ответа.",
+            "examples": [
+              "none",
+              "openclaw"
+            ]
+          },
+          "status": {
+            "type": "string",
+            "title": "Status",
+            "description": "Чем закончилась обработка: completed — запрошенные части завершены; partial — LLM или запрошенный локальный языковой модуль не завершил проверку, доступные результаты сохранены; processing — результат ещё не зафиксирован (может остаться после прерывания). completed не означает правильность документа или подтверждённое качество анализа.",
+            "examples": [
+              "completed",
+              "partial",
+              "processing"
+            ]
+          },
+          "findings": {
+            "items": {
+              "$ref": "#/components/schemas/Finding"
+            },
+            "type": "array",
+            "title": "Findings",
+            "description": "Список замечаний правил и/или модели. Пустой список означает отсутствие принятых замечаний в выполненных проверках, а не доказанную безошибочность письма."
+          },
+          "metrics": {
+            "properties": {
+              "total_findings": {
+                "type": "integer",
+                "description": "Всего возвращённых замечаний после проверки и объединения; равно длине findings.",
+                "example": 1
+              },
+              "by_category": {
+                "additionalProperties": {
+                  "type": "integer"
+                },
+                "type": "object",
+                "description": "Число замечаний по категориям language/content/formatting. Отсутствующий ключ означает 0.",
+                "example": {
+                  "content": 1
+                }
+              },
+              "by_severity": {
+                "additionalProperties": {
+                  "type": "integer"
+                },
+                "type": "object",
+                "description": "Число замечаний по критичности info/warning/critical. Отсутствующий ключ означает 0.",
+                "example": {
+                  "warning": 1
+                }
+              },
+              "paragraph_count": {
+                "type": "integer",
+                "description": "Число абзацев верхнего уровня основной части DOCX. Не включает абзацы таблиц и колонтитулов; не является числом страниц.",
+                "example": 1
+              },
+              "quality_score": {
+                "type": "null",
+                "description": "Всегда null: общий балл качества не рассчитывается без обоснованных весов и экспертной валидации."
+              },
+              "applied_rules": {
+                "additionalProperties": {
+                  "type": "string"
+                },
+                "type": "object",
+                "description": "Код → версия каждого включённого применимого правила. Наличие здесь означает выполнение проверки, а не обнаруженное нарушение. Может отсутствовать в прежних отчётах.",
+                "example": {
+                  "CONTENT_VAGUE_DEADLINE": "1.0.0"
+                }
+              },
+              "document_profile": {
+                "type": "object",
+                "description": "Локальная эвристика версии 1.0.0: classification=likely_letter/likely_non_letter/undetermined и signals — коды наблюдаемых признаков. Это предупреждение о применимости, не надёжная классификация и не оценка вероятности."
+              },
+              "policy_checks": {
+                "type": "object",
+                "description": "Выбранный профиль инструкции и результаты реализованных проверок: results содержит code, outcome=pass/violation/insufficient_data, fragment_id, expected, observed, reason, source_ref. counts — число исходов, roles — основания выделения блоков. Без выбора профиля status=not_requested. pass относится только к проверенным свойствам; визуальная раскладка и полный состав реквизитов не подтверждаются."
+              },
+              "structure": {
+                "type": "object",
+                "description": "image_references — ссылки на изображения в распознанных абзацах OOXML (не уникальные файлы); headings — абзацы с уровнем заголовка Word; tables — распознанные таблицы, включая вложенные. Содержимое картинок не распознаётся."
+              },
+              "language_check": {
+                "type": "object",
+                "description": "requested — запрашивалась ли локальная проверка; status=not_requested/completed/partial/pending. При успехе: engine, version, checked_characters (символы Python), truncated, findings. Ограничение запроса — 20 000 единиц UTF-16; внешние сервисы не используются."
+              },
+              "llm_validation": {
+                "type": "object",
+                "description": "received — предложений от LLM; accepted_by_filter — прошло фильтр; added_to_report — добавлено после сравнения с локальными замечаниями; duplicates_with_local_findings — исключённые повторы. rejected_by_reason содержит коды/счётчики без отвергнутых текстов. Фильтр консервативный и не доказывает истинность принятых выводов."
+              },
+              "timings_ms": {
+                "additionalProperties": {
+                  "type": [
+                    "number",
+                    "null"
+                  ]
+                },
+                "type": "object",
+                "description": "Реальные длительности этапов в мс: parse_ms, profile_ms, rules_ms (включая загрузку правил), language_ms, retrieval_ms, llm_gateway_ms (весь вызов шлюза и разбор ответа), initial_save_ms. null — этап не выполнялся. total_before_final_save_ms измеряется до последней записи БД; сетевую передачу и сериализацию не включает. В повторе сохраняются прежние замеры; Server-Timing относится к текущему запросу."
+              }
+            },
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Metrics",
+            "description": "Счётчики замечаний и сведения о выполнении правил. Это не проценты качества и не экспертная оценка. Отсутствующие категории в словарях имеют нулевой счётчик. У старых отчётов applied_rules может отсутствовать."
+          },
+          "warnings": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Warnings",
+            "description": "Ограничения извлечения DOCX, проверки и сведения о сбое модели. Читать даже при completed. Изображения и визуальный вид страниц не передаются текстовой модели.",
+            "default": []
+          },
+          "created_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created At",
+            "description": "Время создания предварительного отчёта сервером (UTC), а не время окончания анализа. Не используется как измерение задержки."
+          },
+          "external_document_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "External Document Id",
+            "description": "Переданный идентификатор документа во внешней СЭД, либо null. Хранится локально для связи с системой; сам по себе не является ключом идемпотентности и не включается в модельный запрос."
+          },
+          "request_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Request Id",
+            "description": "UUID первоначального HTTP-запроса анализа. При повторе остаётся прежним, тогда как заголовок X-Request-ID относится к текущему HTTP-запросу. В старых отчётах может быть null."
+          },
+          "ruleset_version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ruleset Version",
+            "description": "Версия реестра правил на момент анализа. Это не версия ГОСТ, API или модели. В старых отчётах может быть null.",
+            "examples": [
+              "demo-0.3.0"
+            ]
+          },
+          "document_type": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DocumentType"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Тип письма, заявленный клиентом. Влияет на применимость правил; соответствие содержимого этому типу автоматически не проверено. В старых отчётах может быть null."
+          },
+          "template_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Template Id",
+            "description": "Заявленный идентификатор корпоративного шаблона или null. Используется для применимости правил, а не для автоматического распознавания или проверки визуального шаблона."
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "filename",
+          "mode",
+          "provider",
+          "status",
+          "findings",
+          "metrics"
+        ],
+        "title": "AnalysisResponse",
+        "description": "Сохранённый отчёт проверки, включая её ограничения. Решение принимает человек."
+      },
+      "Body_add_knowledge_api_v1_knowledge_documents_post": {
+        "properties": {
+          "file": {
+            "type": "string",
+            "contentMediaType": "application/octet-stream",
+            "title": "File",
+            "description": "Разрешённый DOCX или UTF-8 TXT. По умолчанию до 5 МиБ; текст до 150 000 символов. Хранение загруженного материала должно быть разрешено владельцем."
+          },
+          "kind": {
+            "$ref": "#/components/schemas/SourceKind",
+            "description": "Роль: normative — нормативный материал, good — положительный образец, bad — отрицательный. Образцы не служат нормативным основанием."
+          },
+          "source_ref": {
+            "type": "string",
+            "title": "Source Ref",
+            "description": "Необязательный идентификатор источника/экспертной разметки. Крайние пробелы удаляются, сохраняются первые 255 символов. Может быть пустым. Попадает в контекст как ссылка, поэтому не включайте лишние приватные идентификаторы.",
+            "default": ""
+          }
+        },
+        "type": "object",
+        "required": [
+          "file",
+          "kind"
+        ],
+        "title": "Body_add_knowledge_api_v1_knowledge_documents_post"
+      },
+      "Body_analyze_api_v1_analyze_post": {
+        "properties": {
+          "file": {
+            "type": "string",
+            "contentMediaType": "application/octet-stream",
+            "title": "File",
+            "description": "Исходящее деловое письмо DOCX. По умолчанию до 5 МиБ; фактический лимит показывает /capabilities. Передаётся файл, не строка пути. Извлекаются текст и часть структуры; изображения не анализируются. Оригинал не изменяется."
+          },
+          "use_llm": {
+            "type": "boolean",
+            "title": "Use Llm",
+            "description": "Нужна ли модельная часть. false — локальная обработка; true — дополнительно модель через OpenClaw. LanguageTool включается отдельным флагом use_language_checks. Для LLM нужны также allow_external_transfer=true и глобальное разрешение сервера. По умолчанию false.",
+            "default": false
+          },
+          "use_language_checks": {
+            "type": "boolean",
+            "title": "Use Language Checks",
+            "description": "Добавить локальную проверку русского текста LanguageTool 6.6: орфография, часть грамматики и пунктуации. Нужны профиль Docker language и LANGUAGE_TOOL_ENABLED=true. Внешняя модель не используется. Начальная проверка ограничена 20 000 единицами UTF-16; усечение отражается в warnings. По умолчанию false.",
+            "default": false
+          },
+          "allow_external_transfer": {
+            "type": "boolean",
+            "title": "Allow External Transfer",
+            "description": "Явное согласие именно на этот запрос: передать извлечённый текст и найденные фрагменты базы знаний внешней модели через OpenClaw. Автоматического обезличивания нет. Без true модельный запрос отклоняется с 409. Само согласие при use_llm=false не вызывает модель.",
+            "default": false
+          },
+          "external_document_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 128,
+                "minLength": 1
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "External Document Id",
+            "description": "Необязательный идентификатор документа в вашей СЭД, 1–128 символов. Для ручного теста можно не заполнять. Сохраняется в отчёте локально, не включается в модельный запрос и не заменяет Idempotency-Key."
+          },
+          "document_type": {
+            "$ref": "#/components/schemas/DocumentType",
+            "description": "Тип письма для применимости правил: unspecified — не указан, request — запрос, response — ответ, notification — уведомление, cover_letter — сопроводительное. Это тип документа, не тип HTTP-запроса. Клиент указывает его самостоятельно; содержимое автоматически не классифицируется.",
+            "default": "unspecified"
+          },
+          "template_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9_.-]{1,64}$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Template Id",
+            "description": "Необязательный идентификатор корпоративного шаблона: 1–64 символа ASCII (буквы, цифры, _, ., -). Фильтрует правила по применимости; не загружает шаблон и не проверяет визуальное соответствие ему. Не заполняйте, если шаблон не определён."
+          },
+          "policy_profile": {
+            "anyOf": [
+              {
+                "type": "string",
+                "const": "office_instruction_letters"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Policy Profile",
+            "description": "Явно применить профиль предоставленной инструкции: office_instruction_letters. Без поля выполняются прежние эвристики. Профиль организации автоматически не угадывается. Включает реализованную часть требований; результаты и недостаточные данные — metrics.policy_checks. Не означает полного соответствия инструкции/ГОСТ."
+          }
+        },
+        "type": "object",
+        "required": [
+          "file"
+        ],
+        "title": "Body_analyze_api_v1_analyze_post"
+      },
+      "DocumentType": {
+        "type": "string",
+        "enum": [
+          "unspecified",
+          "request",
+          "response",
+          "notification",
+          "cover_letter"
+        ],
+        "title": "DocumentType",
+        "description": "Заявленный тип исходящего письма: unspecified — не указан; request — запрос;\nresponse — ответ; notification — уведомление; cover_letter — сопроводительное письмо.\nЗадаётся клиентом для применимости правил, автоматически по содержимому не определяется."
+      },
+      "Finding": {
+        "properties": {
+          "code": {
+            "type": "string",
+            "maxLength": 90,
+            "minLength": 1,
+            "title": "Code",
+            "description": "Код типа замечания. Для rule — код реестра; для llm код предлагает модель, он не является стабильным нормативным классификатором.",
+            "examples": [
+              "CONTENT_VAGUE_DEADLINE"
+            ]
+          },
+          "category": {
+            "type": "string",
+            "pattern": "^(language|content|formatting)$",
+            "title": "Category",
+            "description": "Категория: language — язык, content — содержание, formatting — оформление. Категория не означает полноту проверки этого направления."
+          },
+          "severity": {
+            "type": "string",
+            "pattern": "^(info|warning|critical)$",
+            "title": "Severity",
+            "description": "Предварительная критичность: info — информация, warning — обратить внимание, critical — проверить в первую очередь. Это не юридическая или экспертная оценка риска."
+          },
+          "message": {
+            "type": "string",
+            "maxLength": 1000,
+            "minLength": 3,
+            "title": "Message",
+            "description": "Объяснение возможного недостатка на русском языке."
+          },
+          "evidence": {
+            "type": "string",
+            "maxLength": 600,
+            "title": "Evidence",
+            "description": "Цитата из письма либо структурное доказательство (например, список шрифтов). Для LLM проверяется буквальное наличие цитаты в переданном фрагменте; это не доказывает правильность замечания. Может быть пустым для правила пустого документа.",
+            "default": ""
+          },
+          "recommendation": {
+            "type": "string",
+            "maxLength": 1000,
+            "title": "Recommendation",
+            "description": "Предлагаемое действие для автора. Автоматически к оригиналу не применяется.",
+            "default": ""
+          },
+          "expected": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expected",
+            "description": "Ожидаемые свойства для локальной проверки по инструкции; null для прежних эвристик и модели."
+          },
+          "observed": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Observed",
+            "description": "Наблюдаемые свойства DOCX, на которых основано замечание; не результат визуального рендеринга."
+          },
+          "applicability_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Applicability Reason",
+            "description": "Почему проверка применена к этому блоку; распознанная роль требует проверки человеком."
+          },
+          "source_ref": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Ref",
+            "description": "Идентификатор основания или null. LOCAL-* — локальная эвристика. У модели сохраняется только ссылка из переданного нормативного контекста; существование ссылки не подтверждает применимость нормы."
+          },
+          "method": {
+            "type": "string",
+            "pattern": "^(rule|llm|language_tool)$",
+            "title": "Method",
+            "description": "Источник: rule — локальная проверка (эвристика или явно выбранный профиль инструкции); llm — модель через OpenClaw; language_tool — отдельный локальный языковой модуль. Все рекомендации проверяет человек.",
+            "default": "rule"
+          },
+          "verified": {
+            "type": "boolean",
+            "title": "Verified",
+            "description": "Для rule значение true подтверждает выполнение условия эвристики, а не соответствие ГОСТ. Для llm и language_tool всегда false: замечание требует проверки человеком. Это не вероятность и не оценка уверенности.",
+            "default": true
+          },
+          "fragment_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fragment Id",
+            "description": "Структурный адрес фрагмента DOCX, когда известен; null при неоднозначном или неизвестном адресе. У llm и language_tool заполняется при единственном совпадении цитаты. Это не номер страницы или координаты.",
+            "examples": [
+              "body/p[0]",
+              null
+            ]
+          },
+          "rule_version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rule Version",
+            "description": "Версия спецификации для rule; версия движка (6.6) для language_tool. У модельных замечаний null.",
+            "examples": [
+              "1.0.0",
+              "6.6",
+              null
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "code",
+          "category",
+          "severity",
+          "message"
+        ],
+        "title": "Finding",
+        "description": "Отдельное рекомендательное замечание. Наличие цитаты не доказывает вывод модели."
+      },
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "type": "array",
+            "title": "Detail"
+          }
+        },
+        "type": "object",
+        "title": "HTTPValidationError"
+      },
+      "KnowledgeItem": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id",
+            "description": "UUID документа базы знаний. Используется для явного удаления."
+          },
+          "filename": {
+            "type": "string",
+            "title": "Filename",
+            "description": "Имя загруженного DOCX/TXT."
+          },
+          "kind": {
+            "$ref": "#/components/schemas/SourceKind",
+            "description": "Заявленная роль: нормативный материал, положительный или отрицательный образец. Загрузка не подтверждает нормативный статус."
+          },
+          "source_ref": {
+            "type": "string",
+            "title": "Source Ref",
+            "description": "Переданный идентификатор основания/экспертной разметки; может быть пустым. В контексте модели используется как ссылка на источник."
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At",
+            "description": "Время сохранения в базе знаний, UTC. Текст хранится до явного удаления."
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "filename",
+          "kind",
+          "source_ref",
+          "created_at"
+        ],
+        "title": "KnowledgeItem",
+        "description": "Метаданные сохранённого материала базы знаний; текст в этом ответе не выдаётся."
+      },
+      "SourceKind": {
+        "type": "string",
+        "enum": [
+          "normative",
+          "good",
+          "bad"
+        ],
+        "title": "SourceKind",
+        "description": "Роль материала: normative — заявленный нормативный источник; good — положительный\nобразец; bad — отрицательный образец. Метка не подтверждает правомерность, нормативный\nстатус или применимость текста. Образцы good/bad не являются нормативными основаниями."
+      },
+      "ValidationError": {
+        "properties": {
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "type": "array",
+            "title": "Location"
+          },
+          "msg": {
+            "type": "string",
+            "title": "Message"
+          },
+          "type": {
+            "type": "string",
+            "title": "Error Type"
+          },
+          "input": {
+            "title": "Input"
+          },
+          "ctx": {
+            "type": "object",
+            "title": "Context"
+          }
+        },
+        "type": "object",
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError"
+      }
+    },
+    "securitySchemes": {
+      "APIKeyHeader": {
+        "type": "apiKey",
+        "description": "Ключ нашего приложения: значение APP_API_KEY из локального .env. Вставьте без кавычек, имени переменной и префикса Bearer. ZAI_API_KEY, YANDEX_API_KEY и токен OpenClaw здесь не подходят.",
+        "in": "header",
+        "name": "X-API-Key"
+      }
+    }
+  },
+  "tags": [
+    {
+      "name": "Анализ",
+      "description": "Проверка DOCX и объяснение результата. Решение принимает человек."
+    },
+    {
+      "name": "Отчёты",
+      "description": "Локально сохранённые результаты; чтение не вызывает модель повторно."
+    },
+    {
+      "name": "Правила",
+      "description": "Версии эвристик, основания и область применимости."
+    },
+    {
+      "name": "База знаний",
+      "description": "Материалы для поиска контекста. Загружайте только разрешённые данные."
+    },
+    {
+      "name": "Сервис",
+      "description": "Состояние API/БД и настройки возможностей."
+    }
+  ]
+}
