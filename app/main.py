@@ -7,6 +7,7 @@ from typing import Literal
 from uuid import UUID
 
 from fastapi import (
+    Body,
     Depends,
     FastAPI,
     File,
@@ -27,6 +28,8 @@ from sqlalchemy.orm import Session
 
 from app import api_docs
 from app.analysis_cache import AnalysisCache
+from app.assistant import FAILED_MESSAGE, assist_finding
+from app.assistant_schemas import AssistantRequest, AssistantResponse
 from app.config import get_settings
 from app.db import SessionLocal, engine, get_db
 from app.diagnostics import local_warnings
@@ -40,6 +43,7 @@ from app.letter_checks import IMPLEMENTED, PROFILE_ID, evaluate_policy
 from app.migrations import upgrade_database
 from app.models import (
     AnalysisRun,
+    AssistantOperation,
     IdempotencyRecord,
     KnowledgeDocument,
     RuleDefinition,
@@ -66,11 +70,12 @@ async def lifespan(app: FastAPI):
         app.state.analysis_cache.clear()
 
 
-app = FastAPI(title="SED DSS — анализ исходящих писем", version="0.7.0", lifespan=lifespan,
+app = FastAPI(title="SED DSS — анализ исходящих писем", version="0.8.0", lifespan=lifespan,
               description=api_docs.API_DESCRIPTION,
               openapi_tags=[
                   {"name": "Анализ", "description": "Проверка DOCX и объяснение результата. Решение принимает человек."},
                   {"name": "Отчёты", "description": "Локально сохранённые результаты; чтение не вызывает модель повторно."},
+                  {"name": "Помощник", "description": "Объяснение одного замечания и предложения автору. Оригинал не изменяется, ответы модели проверяет человек."},
                   {"name": "Правила", "description": "Версии эвристик, основания и область применимости."},
                   {"name": "База знаний", "description": "Материалы для поиска контекста. Загружайте только разрешённые данные."},
                   {"name": "Сервис", "description": "Состояние API/БД и настройки возможностей."},
@@ -144,6 +149,10 @@ def capabilities():
                                "ttl_seconds": s.analysis_cache_ttl_seconds,
                                "max_entries": s.analysis_cache_max_entries,
                                "stages": ["language_tool", "llm"], "stores": "report_references_only"},
+            "finding_assistant": {"available": True, "local_actions": ['explain', 'fix'],
+                                  "model_actions": ['explain', 'fix', 'rephrase', 'question'],
+                                  "max_selected_text_characters": 2000, "max_question_characters": 1000,
+                                  "model_idempotency_required": True, "conversation_history": False},
             "automatic_document_rewrite": False, "sed_integration": "REST API"}
 
 
@@ -450,9 +459,62 @@ def delete_report(request: Request, report_id: UUID = ApiPath(..., description="
     if not run:
         raise HTTPException(404, "Отчёт не найден")
     db.execute(update(IdempotencyRecord).where(IdempotencyRecord.analysis_id == run.id).values(analysis_id=None))
+    db.execute(update(AssistantOperation).where(AssistantOperation.report_id == run.id)
+               .values(report_id=None, result=None))
     db.delete(run)
     db.commit()
     request.app.state.analysis_cache.invalidate_report(str(report_id))
+
+
+@app.post('/api/v1/reports/{report_id}/assistant', response_model=AssistantResponse,
+          dependencies=[Depends(require_api_key)], tags=['Помощник'],
+          summary='Объяснить замечание или задать вопрос по нему',
+          description='Выберите finding_index из исходного массива findings. Explain/fix доступны локально без модели. '
+          'Для уточнения моделью, question и rephrase нужны use_llm=true, согласие этого запроса и глобальное разрешение; '
+          'обращение только через OpenClaw. Для rephrase вставьте selected_text: полного письма в отчёте нет. '
+          'Основание берётся из сохранённой версии правила, не из последней конфигурации; это не цитата оригинала инструкции. '
+          'Ссылки и схема ответа проверяются, для предложения контролируется сохранение чисел/контактов/ссылок, но смысл и имена проверяет человек. '
+          'Для модели обязателен Idempotency-Key. Повтор не вызывает модель, согласие нужно и для повтора. '
+          'С ключом в БД сохраняются HMAC, статус и ограниченный ответ; исходный вопрос/selected_text отдельно не сохраняются, '
+          'но ответ может содержать цитату или переформулированный текст. Без ключа локальный ответ не сохраняется. '
+          'Удаление исходного отчёта/retention удаляет связанные ответы, сохраняя обезличенные маркеры. '
+          'У сбоя отдельный HTTP 502: исходный анализ остаётся доступным. Истории диалога и автоматической правки DOCX нет.',
+          responses={**api_docs.AUTH_RESPONSE, 404: {'description': 'Отчёт или индекс замечания не найден.'},
+                     409: {'description': 'Нет разрешения/ключа операции, несовместимое действие, другой запрос с прежним ключом либо операция уже processing.'},
+                     410: {'description': 'Исходный отчёт удалён. Повтор не вызывает модель.'},
+                     413: {'description': 'Контекст замечания превышает ограничение помощника.'},
+                     502: {'description': 'Модельный ответ не получен/отклонён. Отчёт анализа сохранён; повтор прежней операции не вызывает модель.'},
+                     503: {'description': 'Ошибка БД. После неопределённого ответа повторяйте с тем же ключом.'}})
+async def finding_assistant(request: Request, response: Response,
+        payload: AssistantRequest = Body(..., openapi_examples={
+            'local_explain': {'summary': 'Локальное объяснение, без модели',
+                              'value': {'finding_index': 0, 'action': 'explain'}},
+            'local_fix': {'summary': 'Шаги исправления, без модели',
+                          'value': {'finding_index': 0, 'action': 'fix'}},
+            'question': {'summary': 'Вопрос модели: перед исполнением явно подтвердите передачу',
+                         'value': {'finding_index': 0, 'action': 'question', 'question': 'Почему эта формулировка неоднозначна?',
+                                   'use_llm': True, 'allow_external_transfer': False}},
+            'rephrase': {'summary': 'Синтетический фрагмент: перед исполнением явно подтвердите передачу',
+                         'value': {'finding_index': 0, 'action': 'rephrase',
+                                   'selected_text': 'Просим до 24.12.2025 направить 12 экземпляров учебных материалов.',
+                                   'use_llm': True, 'allow_external_transfer': False}},
+        }),
+        report_id: UUID = ApiPath(..., description='UUID сохранённого отчёта, в котором выбрано замечание.'),
+        idempotency_key: str | None = Header(None, alias='Idempotency-Key', pattern=r'^[A-Za-z0-9_.:-]{8,128}$',
+            description='Ключ операции помощника. Обязателен для use_llm=true, необязателен локально. Для повтора тех же данных сохраните ключ; новое действие/вопрос — новый ключ. Область отделена от ключей анализа.'),
+        db: Session = Depends(get_db)) -> AssistantResponse:
+    try:
+        result, replayed = await assist_finding(db, str(report_id), payload, get_settings(),
+                                               request.state.request_id, idempotency_key)
+    except ProviderError as exc:
+        # ProviderError is explicitly a safe public error, never an upstream body.
+        raise HTTPException(502, FAILED_MESSAGE + ' Причина: ' + str(exc)) from None
+    except SQLAlchemyError:
+        db.rollback()
+        raise HTTPException(503, 'Не удалось сохранить или прочитать операцию помощника. Повторите с прежним Idempotency-Key; новый вызов автоматически не запускается.') from None
+    if replayed:
+        response.headers['Idempotency-Replayed'] = 'true'
+    return result
 
 
 @app.get("/api/v1/rules", dependencies=[Depends(require_api_key)], tags=["Правила"],

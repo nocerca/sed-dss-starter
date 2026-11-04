@@ -44,6 +44,15 @@ def test_postman_requires_consent_and_contains_no_credentials():
             assert "skipRequest" in script(item, "prerequest")
         if "body" not in request:
             continue
+        if request['body']['mode'] == 'raw':
+            body = json.loads(request['body']['raw'])
+            assert body['allow_external_transfer'] is False
+            if body['use_llm']:
+                assert 'get("external_consent") === "true"' in script(item, 'prerequest')
+                assert 'set("external_consent", "false")' in script(item, 'prerequest')
+                assert 'body.allow_external_transfer = consent' in script(item, 'prerequest')
+                assert 'status(409)' in script(item, 'test')
+            continue
         form = {field["key"]: field for field in request["body"]["formdata"]}
         if form["allow_external_transfer"]["value"] != "false":
             assert form["allow_external_transfer"]["value"] == "{{external_consent}}"

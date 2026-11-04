@@ -18,7 +18,7 @@ try:
         print("Проверка цепочки OpenClaw не пройдена; проверьте изолированный тестовый проект")
         sys.exit(1)
     logs = run(["logs", "--no-color"]).stdout
-    if any(marker in logs for marker in ("SEMANTIC_DEMO", "учебные материалы", "FIRST_SYNTHETIC_MARKER", "synthetic-zai-api-key", "PRIVATE-SED-ID")):
+    if any(marker in logs for marker in ("SEMANTIC_DEMO", "учебные материалы", "FIRST_SYNTHETIC_MARKER", "synthetic-zai-api-key", "PRIVATE-SED-ID", "SYNTHETIC_ASSISTANT_MARKER")):
         print("Проверка журналов не пройдена: обнаружены тестовые данные")
         sys.exit(1)
     print("OK: REST, PostgreSQL, OpenClaw, тестовая модель, идемпотентность, согласие, сессии и журналы")

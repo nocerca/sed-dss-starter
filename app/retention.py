@@ -5,7 +5,7 @@ from datetime import datetime, timedelta, timezone
 from sqlalchemy import delete, func, select, update
 from sqlalchemy.orm import Session
 
-from app.models import AnalysisRun, IdempotencyRecord
+from app.models import AnalysisRun, AssistantOperation, IdempotencyRecord
 
 
 def purge_reports(db: Session, cutoff: datetime, *, execute: bool = False) -> int:
@@ -13,6 +13,8 @@ def purge_reports(db: Session, cutoff: datetime, *, execute: bool = False) -> in
     count = db.scalar(select(func.count()).select_from(AnalysisRun).where(AnalysisRun.created_at < cutoff))
     if execute:
         db.execute(update(IdempotencyRecord).where(IdempotencyRecord.analysis_id.in_(expired)).values(analysis_id=None))
+        db.execute(update(AssistantOperation).where(AssistantOperation.report_id.in_(expired))
+                   .values(report_id=None, result=None))
         db.execute(delete(AnalysisRun).where(AnalysisRun.created_at < cutoff))
         db.commit()
     return count or 0

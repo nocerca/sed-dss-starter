@@ -70,3 +70,24 @@ export function errorText(status, detail) {
   if (status >= 500) return 'Сервис не смог завершить запрос. Проверьте сохранённые отчёты перед повторной проверкой.';
   return typeof detail === 'string' ? detail.slice(0, 1500) : 'Не удалось выполнить запрос. Повторите позже.';
 }
+
+export function assistantFields(values) {
+  const action = values.action || 'explain';
+  const useModel = Boolean(values.use_llm);
+  if (['question', 'rephrase'].includes(action) && !useModel) throw new Error('Для вопроса или формулировки нужна модель.');
+  if (useModel && !values.allow_external_transfer) throw new Error('Подтвердите передачу данных для этого запроса помощника.');
+  const result = { finding_index: values.finding_index, action, use_llm: useModel,
+    allow_external_transfer: useModel && Boolean(values.allow_external_transfer) };
+  if (action === 'question') {
+    const question = values.question?.trim() || '';
+    if (question.length < 3 || question.length > 1000) throw new Error('Введите вопрос от 3 до 1000 символов.');
+    result.question = question;
+  }
+  if (['question', 'rephrase'].includes(action)) {
+    const text = values.selected_text?.trim() || '';
+    if (action === 'rephrase' && text.length < 3) throw new Error('Вставьте фрагмент письма для переформулировки.');
+    if (text.length > 2000 || text.length > 0 && text.length < 3) throw new Error('Фрагмент должен содержать от 3 до 2000 символов.');
+    if (text) result.selected_text = text;
+  }
+  return result;
+}

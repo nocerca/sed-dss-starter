@@ -63,9 +63,25 @@ denied = httpx.post("http://api:8000/api/v1/analyze", headers={"X-API-Key": "syn
 assert denied.status_code == 409
 assert httpx.get("http://mock-model:8002/state", trust_env=False).json()["calls"] == 3
 assert httpx.get(f"http://api:8000/api/v1/reports/{report['id']}", headers=headers, trust_env=False).status_code == 200
+assistant_url = f"http://api:8000/api/v1/reports/{report['id']}/assistant"
+assistant_headers = {**headers, 'Idempotency-Key': uuid4().hex}
+question = {'finding_index': 0, 'action': 'question', 'question': 'SYNTHETIC_ASSISTANT_MARKER Как уточнить срок?',
+            'use_llm': True, 'allow_external_transfer': True}
+with ThreadPoolExecutor(max_workers=2) as pool:
+    answers = list(pool.map(lambda _: httpx.post(assistant_url, headers=assistant_headers,
+        json=question, timeout=90, trust_env=False), range(2)))
+assert all(answer.status_code in {200, 409} for answer in answers)
+assert any(answer.status_code == 200 for answer in answers)
+assert next(answer.json() for answer in answers if answer.status_code == 200)['method'] == 'llm'
+repeated = httpx.post(assistant_url, headers=assistant_headers, json=question, timeout=90, trust_env=False)
+assert repeated.status_code == 200 and repeated.headers['Idempotency-Replayed'] == 'true'
+assert httpx.post(assistant_url, headers=assistant_headers,
+    json={**question, 'allow_external_transfer': False}, trust_env=False).status_code == 409
+assert httpx.get('http://mock-model:8002/state', trust_env=False).json()['calls'] == 4
 assert httpx.delete(f"http://api:8000/api/v1/reports/{report['id']}", headers=headers, trust_env=False).status_code == 204
 assert post_report().status_code == 410
 assert httpx.post('http://api:8000/api/v1/analyze', headers=alias_headers, data=form,
                   files={'file': ('synthetic.docx', letter)}, trust_env=False).status_code == 410
-assert httpx.get("http://mock-model:8002/state", trust_env=False).json()["calls"] == 3
+assert httpx.post(assistant_url, headers=assistant_headers, json=question, trust_env=False).status_code == 410
+assert httpx.get("http://mock-model:8002/state", trust_env=False).json()["calls"] == 4
 print("OK: REST, PostgreSQL migrations, concurrent idempotency, gateway, consent, sessions and report deletion")

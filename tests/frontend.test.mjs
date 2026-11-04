@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { analysisFields, errorText, fileError, formatDate, fragmentLabel, plural } from '../app/static/ui-core.mjs';
+import { analysisFields, assistantFields, errorText, fileError, formatDate, fragmentLabel, plural } from '../app/static/ui-core.mjs';
 
 test('upload rejects missing, empty, oversized and unsupported files', () => {
   assert.match(fileError(null), /DOCX/);
@@ -49,4 +49,27 @@ test('Russian counters and absent dates are presented without invented values', 
   assert.equal(plural(22, forms), '22 замечания');
   assert.equal(formatDate('invalid'), 'Дата не указана');
   assert.equal(formatDate(null), 'Дата не указана');
+});
+
+test('local assistant excludes hidden text/question and never infers consent', () => {
+  assert.deepEqual(assistantFields({ finding_index: 7, action: 'fix', selected_text: 'hidden input',
+    question: 'hidden question', allow_external_transfer: true }), {
+    finding_index: 7, action: 'fix', use_llm: false, allow_external_transfer: false,
+  });
+});
+
+test('model assistant requires explicit consent and preserves the original finding index', () => {
+  assert.throws(() => assistantFields({ action: 'question', question: 'Почему?', use_llm: true }), /Подтвердите/);
+  assert.throws(() => assistantFields({ action: 'question', question: 'Почему?' }), /нужна модель/);
+  const payload = assistantFields({ finding_index: 3, action: 'question', question: ' Почему? ',
+    use_llm: true, allow_external_transfer: true });
+  assert.equal(payload.finding_index, 3);
+  assert.equal(payload.question, 'Почему?');
+  assert.equal(payload.allow_external_transfer, true);
+});
+
+test('rephrasing requires user text and bounds question/excerpt lengths', () => {
+  assert.throws(() => assistantFields({ action: 'rephrase', use_llm: true, allow_external_transfer: true }), /Вставьте/);
+  assert.throws(() => assistantFields({ action: 'question', use_llm: true, allow_external_transfer: true, question: 'x'.repeat(1001) }), /1000/);
+  assert.throws(() => assistantFields({ action: 'rephrase', use_llm: true, allow_external_transfer: true, selected_text: 'x'.repeat(2001) }), /2000/);
 });

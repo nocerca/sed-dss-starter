@@ -1,7 +1,9 @@
 from datetime import datetime, timezone
 from uuid import uuid4
-from sqlalchemy import DateTime, ForeignKey, Integer, JSON, String, Text
+
+from sqlalchemy import JSON, DateTime, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
+
 from app.db import Base
 
 
@@ -62,4 +64,16 @@ class IdempotencyRecord(Base):
     analysis_id: Mapped[str | None] = mapped_column(
         String(36), ForeignKey("analysis_runs.id", ondelete="SET NULL"), nullable=True,
     )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class AssistantOperation(Base):
+    __tablename__ = 'assistant_operations'
+    key_hash: Mapped[str] = mapped_column(String(64), primary_key=True)
+    request_hash: Mapped[str] = mapped_column(String(64))
+    report_id: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey('analysis_runs.id', ondelete='SET NULL'), nullable=True, index=True,
+    )
+    status: Mapped[str] = mapped_column(String(20), default='processing')
+    result: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)

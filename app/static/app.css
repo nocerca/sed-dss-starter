@@ -293,6 +293,28 @@ details[open] > summary > .chevron { transform: rotate(90deg); }
 .zero-findings { padding: 30px 24px; text-align: left; }
 .zero-findings > svg { width: 26px; height: 26px; color: var(--green); }
 .zero-findings p { margin: 0; max-width: none; line-height: 1.8; }
+.finding-actions { display: flex; gap: 8px; margin-top: 18px; }
+.assistant-dialog { width: min(640px, calc(100% - 28px)); max-height: calc(100dvh - 36px); }
+.assistant-finding { font-size: 12px; line-height: 1.75; color: var(--muted); border-left: 2px solid var(--border); padding-left: 12px; margin-top: 12px; overflow-wrap: anywhere; }
+textarea { display: block; resize: vertical; min-height: 78px; width: 100%; border: 1px solid var(--border); border-radius: 6px; background: var(--surface); color: var(--text); padding: 9px 11px; font: inherit; font-size: 13px; line-height: 1.7; }
+textarea::placeholder { color: var(--muted); opacity: .8; }
+.assistant-mode { margin: 20px 0 16px; }
+.assistant-mode .checkbox-label { font-size: 12px; }
+.assistant-mode .field-help { margin-left: 23px; }
+.assistant-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 18px; }
+.assistant-progress { display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: 12px; margin-top: 16px; }
+.assistant-answer { border-top: 1px solid var(--border); margin-top: 24px; padding-top: 20px; }
+.assistant-answer-title { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; }
+.assistant-answer > p { font-size: 13px; line-height: 1.8; white-space: pre-wrap; overflow-wrap: anywhere; }
+.assistant-steps { padding-left: 20px; margin: 14px 0; font-size: 13px; line-height: 1.8; }
+.assistant-steps li + li { margin-top: 7px; }
+.assistant-suggestion { margin: 18px 0; }
+.assistant-suggestion textarea { background: var(--subtle); min-height: 120px; }
+.assistant-suggestion .button { margin-top: 9px; }
+.assistant-source { margin-top: 16px; background: var(--subtle); border: 1px solid var(--border-soft); border-radius: 6px; padding: 12px; font-size: 12px; }
+.assistant-source p { line-height: 1.75; margin-top: 7px; }
+.assistant-source code { color: var(--muted); font-size: 10px; }
+.assistant-retention { margin-top: 20px; font-size: 11px; line-height: 1.75; color: var(--muted); }
 @keyframes spin { to { transform: rotate(360deg); } }
 @keyframes progress { from { transform: translateX(-120%); } to { transform: translateX(430%); } }
 @media (min-width: 1440px) { .main { padding-top: 45px; } }

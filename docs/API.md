@@ -119,3 +119,7 @@
 ## Веб-клиент v0.7 и совместимость
 
 Корневая страница `/` и `/assets/*` обслуживают браузерный клиент; в OpenAPI они не включены. Это добавление не меняет `/api/v1`, схему отчёта, требования к авторизации, multipart-параметры или идемпотентность. Swagger `/docs`, схема `/openapi.json` и Postman доступны как раньше. UI не является обязательным слоем интеграции. Ключ вводится пользователем и передаётся только заголовком, без cookies/URL/storage. Подробности — [WEB.md](WEB.md).
+
+## Помощник по замечанию v0.8
+
+`POST /api/v1/reports/{report_id}/assistant` — JSON: finding_index, action=explain/fix/rephrase/question, use_llm=false, allow_external_transfer=false, необязательные question/selected_text по действию. Explain/fix доступны локально. Для модели нужны два разрешения и Idempotency-Key; переформулировка требует выбранного текста. Ответ AssistantResponse не меняет AnalysisResponse, имеет собственные method/provider/status, answer/steps/suggestion/sources/warnings. Ошибки — 404/409/410/413/422/502/503; сбой помощника не превращает исходный отчёт в partial. GET /capabilities дополнен finding_assistant. Остальной API совместим; единственное изменение схемы — аддитивная таблица Alembic 0003. [Полный контракт](ASSISTANT.md).

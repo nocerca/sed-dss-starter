@@ -105,3 +105,7 @@ HTTP 200 со `status=partial`, `mode=rules_fallback` означает, что �
 Если удобнее без Postman, откройте [Swagger](http://127.0.0.1:8000/docs), нажмите **Authorize**, вставьте `APP_API_KEY`, откройте `POST /api/v1/analyze → Try it out`, выберите DOCX. Для локального режима оставьте оба флага false; для внешней модели нужны `use_llm=true` и `allow_external_transfer=true`.
 
 Повторная генерация импортов без чтения `.env`: `python scripts/export_postman.py`. Существующий DOCX-пример не перезаписывается. Полный REST-контракт — [API.md](API.md).
+
+## Помощник по замечанию
+
+В папке **08** — explain/fix локально и question/rephrase через модель. Сначала создайте отчёт с непустым findings; используется `report_id` и индекс 0 исходного массива. Для модели каждый раз задайте `external_consent=true`: скрипт превращает его в JSON boolean и расходует до Send. Укажите свой разрешённый фрагмент для rephrase. Новый Send создаёт новый ключ помощника; для повтора после потери ответа нужны прежние ключ/тело и новое согласие. Полный контракт — [ASSISTANT.md](ASSISTANT.md).

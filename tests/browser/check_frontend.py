@@ -32,6 +32,7 @@ SYNTHETIC_KEY = 'synthetic-browser-test-key'
 def check(base_url: str, screenshots: Path | None) -> None:
     document = baseline_document()
     document.paragraphs[7].runs[0].font.name = 'Arial'
+    document.paragraphs[7].runs[0].text = 'Просим в кратчайшие сроки направить перечень учебных материалов.'
     stream = io.BytesIO()
     document.save(stream)
     file_payload = {'name': 'browser-letter.docx', 'mimeType':
@@ -107,6 +108,24 @@ def check(base_url: str, screenshots: Path | None) -> None:
         if screenshots:
             page.screenshot(path=str(screenshots / 'report.png'), full_page=True)
         print('OK: invalid upload, real DOCX analysis, audit filtering and JSON export')
+
+        page.get_by_role('button', name='Оформление', exact=False).click()
+        page.get_by_role('button', name='Разобрать замечание', exact=True).click()
+        expect(page.locator('#assistant-answer')).to_contain_text('Локальное объяснение')
+        expect(page.locator('.assistant-source')).to_contain_text('ORG_BODY_FONT')
+        assert posts[-1].post_data_json['finding_index'] == next(
+            index for index, finding in enumerate(actual_report['findings']) if finding['code'] == 'ORG_BODY_FONT')
+        assert posts[-1].post_data_json['use_llm'] is False
+        page.locator('#assistant-action').select_option('fix')
+        page.locator('#assistant-submit').click()
+        expect(page.locator('#assistant-answer')).to_contain_text('Главная → Шрифт')
+        if screenshots:
+            page.screenshot(path=str(screenshots / 'assistant-local.png'), full_page=True)
+        page.locator('#assistant-action').select_option('rephrase')
+        expect(page.locator('#assistant-submit')).to_be_disabled()
+        page.locator('#close-assistant').click()
+        page.get_by_role('button', name='Все', exact=False).first.click()
+        print('OK: local assistant, Word steps, historical basis and original index after category filtering')
 
         page.get_by_role('link', name='Отчёты', exact=True).click()
         page.get_by_role('button', name='browser-letter.docx', exact=True).click()
@@ -203,6 +222,70 @@ def check(base_url: str, screenshots: Path | None) -> None:
         expect(page.locator('#report-title')).to_have_text('browser-letter.docx')
         assert len(attempts) == 2 and attempts[0] == attempts[1]
         print('OK: uncertain network failure keeps the original idempotency key')
+
+        helper_calls = []
+        helper_network_failure = []
+
+        def helper_response(request, **overrides):
+            data = request.post_data_json
+            return {'report_id': actual_report['id'], 'finding_index': data['finding_index'],
+                    'action': data['action'], 'method': 'llm', 'provider': 'openclaw',
+                    'status': 'completed', 'answer': '<img src=x onerror=window.__assistant_xss=1>',
+                    'steps': [], 'sources': [], 'warnings': ['Синтетический модельный ответ требует проверки.'],
+                    'suggestion': None, 'request_id': '00000000-0000-0000-0000-000000000001', **overrides}
+
+        def helper_model(route):
+            data = route.request.post_data_json
+            if not data['use_llm']:
+                route.continue_()
+                return
+            helper_calls.append(route.request)
+            if len(helper_calls) == 1:
+                route.fulfill(json=helper_response(route.request, status='insufficient_data'))
+            elif data['action'] == 'rephrase':
+                route.fulfill(json=helper_response(route.request, suggestion='Просим направить 12 экземпляров до 24.12.2025.'))
+            elif not helper_network_failure:
+                helper_network_failure.append(route.request.headers['idempotency-key'])
+                route.abort('failed')
+            else:
+                helper_network_failure.append(route.request.headers['idempotency-key'])
+                route.fulfill(json=helper_response(route.request))
+
+        page.route('**/api/v1/reports/*/assistant', helper_model)
+        page.get_by_role('button', name='Оформление', exact=False).click()
+        page.get_by_role('button', name='Разобрать замечание', exact=True).click()
+        expect(page.locator('#assistant-answer')).to_contain_text('Локальное объяснение')
+        page.locator('#assistant-action').select_option('question')
+        page.locator('#assistant-question').fill('Почему это замечание требует проверки?')
+        page.locator('#assistant-submit').click()
+        expect(page.locator('#assistant-consent')).to_be_focused()
+        assert not helper_calls
+        page.locator('#assistant-consent').check()
+        page.locator('#assistant-submit').click()
+        expect(page.locator('#assistant-answer')).to_contain_text('Недостаточно данных')
+        assert not page.locator('#assistant-consent').is_checked()
+        assert page.locator('#assistant-answer img').count() == 0
+        assert page.evaluate('window.__assistant_xss === undefined')
+        page.locator('#assistant-action').select_option('rephrase')
+        page.locator('#assistant-text').fill('Просим до 24.12.2025 направить 12 экземпляров.')
+        page.locator('#assistant-consent').check()
+        page.locator('#assistant-submit').click()
+        expect(page.get_by_label('Предлагаемая формулировка')).to_have_value('Просим направить 12 экземпляров до 24.12.2025.')
+        assert helper_calls[0].headers['idempotency-key'] != helper_calls[1].headers['idempotency-key']
+        if screenshots:
+            page.screenshot(path=str(screenshots / 'assistant-model.png'), full_page=True)
+        page.locator('#assistant-action').select_option('question')
+        page.locator('#assistant-question').fill('Как уточнить выбранную просьбу?')
+        page.locator('#assistant-consent').check()
+        page.locator('#assistant-submit').click()
+        expect(page.locator('#assistant-error')).to_contain_text('мог быть принят')
+        assert not page.locator('#assistant-consent').is_checked()
+        page.locator('#assistant-consent').check()
+        page.locator('#assistant-submit').click()
+        expect(page.locator('#assistant-answer')).to_contain_text('Ответ модели')
+        assert len(helper_network_failure) == 2 and helper_network_failure[0] == helper_network_failure[1]
+        page.locator('#close-assistant').click()
+        print('OK: assistant consent, insufficient data, rephrasing, XSS text and uncertain retry')
 
         assert context.cookies() == []
         storage = page.evaluate('({local: {...localStorage}, session: {...sessionStorage}})')

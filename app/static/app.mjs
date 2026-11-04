@@ -2,6 +2,7 @@ import {
   analysisFields, categoryNames, errorText, fileError, formatBytes, formatDate,
   fragmentLabel, methodNames, modeNames, outcomeNames, plural, statusNames, typeNames,
 } from './ui-core.mjs';
+import { createFindingAssistant } from './assistant.mjs';
 
 const $ = (selector) => document.querySelector(selector);
 const state = {
@@ -66,6 +67,10 @@ async function api(path, options = {}, key = state.apiKey) {
   return { body, headers: response.headers };
 }
 
+const findingAssistant = createFindingAssistant({ api, node, icon, detailBlock,
+  getReport: () => state.report, getCapabilities: () => state.capabilities,
+  unauthorized: (failure) => { clearSession(); openConnection(); showError('#connection-error', failure.message); }, toast });
+
 function authNeeded() {
   if (state.apiKey) return false;
   openConnection();
@@ -84,6 +89,7 @@ function openConnection() {
 }
 
 function clearSession() {
+  findingAssistant.clear();
   state.apiKey = '';
   state.capabilities = null;
   state.report = null;
@@ -264,6 +270,7 @@ async function analyze(event) {
 }
 
 function newAnalysis() {
+  findingAssistant.clear();
   state.report = null;
   state.receipt = null;
   $('#report-screen').replaceChildren();
@@ -298,7 +305,7 @@ function technicalDetails(finding) {
   return node('details', { class: 'technical-details' }, node('summary', { text: 'Технические данные' }), content);
 }
 
-function findingCard(finding, open) {
+function findingCard(finding, open, index) {
   const level = finding.severity || 'info';
   const summary = node('summary', {}, icon(level === 'info' ? 'info' : 'warning', `finding-icon ${level}`),
     node('div', { class: 'finding-title' }, node('span', { text: finding.message }),
@@ -314,6 +321,7 @@ function findingCard(finding, open) {
     node('code', { text: finding.code })));
   const technical = technicalDetails(finding);
   if (technical) body.append(technical);
+  body.append(node('div', { class: 'finding-actions' }, node('button', { type: 'button', class: 'button button-small', onclick: () => findingAssistant.open(index) }, icon('message'), 'Разобрать замечание')));
   return node('details', { class: 'panel finding-card', open }, summary, body);
 }
 
@@ -330,7 +338,7 @@ function renderFindings() {
     empty.classList.add('zero-findings');
     list.append(empty);
   } else if (!filtered.length) list.append(emptyState('В этой категории замечаний нет', 'Выберите другую категорию.', 'check'));
-  else list.append(...filtered.map((finding) => findingCard(finding, filtered.length === 1)));
+  else list.append(...filtered.map((finding) => findingCard(finding, filtered.length === 1, findings.indexOf(finding))));
   document.querySelectorAll('[data-category]').forEach((button) => button.setAttribute('aria-pressed', String(button.dataset.category === state.category)));
 }
 

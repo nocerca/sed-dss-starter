@@ -20,7 +20,7 @@ def event(listen: str, code: str) -> dict:
 def request(name: str, method: str, path: str, *, description: str = "",
             status: int | None = 200, script: str = "", before: str = "",
             form: list[dict] | None = None, headers: list[dict] | None = None,
-            public: bool = False) -> dict:
+            public: bool = False, json_body: dict | None = None) -> dict:
     result = {"name": name, "request": {
         "method": method, "header": headers or [], "url": "{{base_url}}" + path,
         "description": description,
@@ -29,6 +29,9 @@ def request(name: str, method: str, path: str, *, description: str = "",
         result["request"]["auth"] = {"type": "noauth"}
     if form:
         result["request"]["body"] = {"mode": "formdata", "formdata": form}
+    if json_body is not None:
+        result['request']['body'] = {'mode': 'raw', 'raw': json.dumps(json_body, ensure_ascii=False, indent=2),
+                                     'options': {'raw': {'language': 'json'}}}
     if before:
         result["event"].insert(0, event("prerequest", before))
     return result
@@ -173,6 +176,48 @@ pm.test("Кэш обойдён", () => {
             description="Синтетическое письмо с одной контролируемой правкой. Создать файлы: python scripts/create_letter_demos.py. Модель не вызывается. Если файл не найден, выберите его вручную в Body → file.",
         ))
     items.append({"name": "06 — Проверки по инструкции: 10 документов", "item": policy_items})
+    assistant_items = []
+    for action, name in [('explain', 'Объяснить замечание локально'), ('fix', 'Как исправить локально'),
+                         ('question', 'Задать вопрос модели'), ('rephrase', 'Предложить формулировку')]:
+        external = action in {'question', 'rephrase'}
+        body = {'finding_index': 0, 'action': action, 'use_llm': external, 'allow_external_transfer': False}
+        if action == 'question':
+            body['question'] = 'Как уточнить выбранную просьбу без добавления вымышленных фактов?'
+        if action == 'rephrase':
+            body['selected_text'] = 'Просим до 24.12.2025 направить 12 экземпляров учебных материалов.'
+        before = 'pm.collectionVariables.set("assistant_idempotency_key", pm.variables.replaceIn("{{$guid}}"));'
+        if external:
+            before = '''const consent = pm.environment.get("external_consent") === "true";
+pm.variables.set("external_consent", consent ? "true" : "false");
+pm.environment.set("external_consent", "false");
+const body = JSON.parse(pm.request.body.raw);
+body.allow_external_transfer = consent;
+pm.request.body.update({mode: "raw", raw: JSON.stringify(body)});
+''' + before
+        checks = '''const answer = pm.response.json();
+pm.test("Ответ по выбранному замечанию", () => {
+  pm.expect(answer.finding_index).to.eql(0);
+  pm.expect(answer.status).to.be.oneOf(["completed", "insufficient_data"]);
+});'''
+        if external:
+            checks = '''if (pm.variables.get("external_consent") !== "true") {
+  pm.test("Без согласия HTTP 409", () => pm.response.to.have.status(409));
+} else {
+  pm.test("HTTP 200", () => pm.response.to.have.status(200));
+''' + checks + '\npm.test("Ответ через OpenClaw", () => pm.expect(answer.provider).to.eql("openclaw"));\n}'
+        else:
+            checks += '\npm.test("Без внешней модели", () => pm.expect(answer.method).to.eql("local"));'
+        assistant_items.append(request(name, 'POST', '/api/v1/reports/{{report_id}}/assistant',
+            json_body=body, status=None if external else 200, before=before, script=checks,
+            headers=[{'key': 'Content-Type', 'value': 'application/json'},
+                     {'key': 'Idempotency-Key', 'value': '{{assistant_idempotency_key}}'}],
+            description='Сначала создайте отчёт с findings. Индекс с нуля из исходного массива. '
+                'Для модели перед каждым Send установите external_consent=true. '
+                'JSON boolean согласия формируется скриптом и сбрасывается до отправки. '
+                'Каждый Send — новая операция; для повтора после потери ответа сохраните прежний ключ и тело. '
+                'Полный текст письма не хранится, selected_text вставьте самостоятельно. '
+                'Ответ рекомендательный; исходный отчёт и DOCX не меняются.'))
+    items.append({'name': '08 — Помощник по замечанию', 'item': assistant_items})
     items.sort(key=lambda folder: folder['name'])
     return {
         "info": {"name": "SED-DSS — локальный API v1", "schema": SCHEMA,
@@ -183,7 +228,7 @@ pm.test("Кэш обойдён", () => {
             {"key": "in", "value": "header", "type": "string"},
         ]},
         "variable": [{"key": key, "value": "", "type": "string"} for key in
-                     ("report_id", "request_id", "rules_report_id", "rules_idempotency_key", "llm_idempotency_key", "policy_idempotency_key", "cached_language_report_id")],
+                     ("report_id", "request_id", "rules_report_id", "rules_idempotency_key", "llm_idempotency_key", "policy_idempotency_key", "cached_language_report_id", "assistant_idempotency_key")],
         "item": items,
     }
 

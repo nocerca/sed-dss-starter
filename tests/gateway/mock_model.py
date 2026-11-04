@@ -26,14 +26,15 @@ class Handler(BaseHTTPRequestHandler):
     def do_POST(self):
         size = int(self.headers.get("Content-Length", "0"))
         body = json.loads(self.rfile.read(size))
+        wire = json.dumps(body, ensure_ascii=False)
+        assistant = 'untrusted_finding' in wire
         valid = (
             self.path == "/api/paas/v4/chat/completions"
             and self.headers.get("Authorization") == "Bearer synthetic-zai-api-key"
             and body.get("model") == "glm-4.7-flash"
             and body.get("thinking") == {"type": "disabled"}
             and not body.get("tools")
-            and "untrusted_letter" in json.dumps(body, ensure_ascii=False)
-            and "untrusted_structure" in json.dumps(body)
+            and (assistant or ('untrusted_letter' in wire and 'untrusted_structure' in wire))
             and not ("SECOND_SYNTHETIC_MARKER" in json.dumps(body) and "FIRST_SYNTHETIC_MARKER" in json.dumps(body))
             and "PRIVATE-SED-ID" not in json.dumps(body)
         )
@@ -48,6 +49,9 @@ class Handler(BaseHTTPRequestHandler):
             "message": "Уточните учебный запрос", "evidence": quote,
             "recommendation": "Уточните перечень", "source_ref": None,
         }]}
+        if assistant:
+            findings = {'status': 'completed', 'answer': 'Синтетический ответ: уточните срок по согласованным данным.',
+                        'steps': [], 'suggestion': None, 'source_refs': []}
         completion = {
             "id": "synthetic-response", "object": "chat.completion", "created": 0,
             "model": "glm-4.7-flash", "choices": [{

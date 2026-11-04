@@ -22,9 +22,9 @@ def test_fresh_and_legacy_upgrade_preserve_reports(tmp_path):
     upgrade_database(engine)
     with engine.connect() as connection:
         assert connection.scalar(text("SELECT filename FROM analysis_runs WHERE id='synthetic-legacy'")) == "synthetic.docx"
-        assert connection.scalar(text("SELECT version_num FROM alembic_version")) == "0002"
+        assert connection.scalar(text("SELECT version_num FROM alembic_version")) == "0003"
         assert connection.scalar(text("SELECT external_document_id FROM analysis_runs")) is None
-    assert {"idempotency_records", "rule_versions"}.issubset(inspect(engine).get_table_names())
+    assert {"idempotency_records", "rule_versions", "assistant_operations"}.issubset(inspect(engine).get_table_names())
 
 
 def test_incompatible_schema_is_not_overwritten(tmp_path):

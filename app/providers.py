@@ -94,7 +94,6 @@ async def analyze_with_llm(
 ) -> list[Finding]:
     if not settings.allow_external_llm or not allow_external_transfer:
         raise ProviderError("Передача в OpenClaw запрещена без двух разрешений")
-    url, model, token = provider_config(settings)
     excerpt = text[:MAX_LLM_CHARACTERS]
     if document is not None and document.text != text:
         raise ProviderError("Структура документа не соответствует переданному тексту")
@@ -102,17 +101,26 @@ async def analyze_with_llm(
         {"source_ref": ctx.source_ref, "kind": ctx.kind, "text": ctx.text[:1300]}
         for ctx in contexts[:3]
     ]
+    content = await gateway_completion(settings, SYSTEM_PROMPT, {
+        'untrusted_context': materials, 'untrusted_letter': excerpt,
+        'untrusted_structure': model_structure(document) if document else {
+            'images_content_available': False, 'visual_layout_available': False, 'complete': False,
+        },
+    }, allow_external_transfer=allow_external_transfer)
+    return verify_findings(extract_json(content), excerpt, contexts[:3], document)
+
+
+async def gateway_completion(settings: Settings, system_prompt: str, context: dict, *,
+                             allow_external_transfer: bool = False) -> str:
+    """Shared isolated transport; callers still validate their own output schema."""
+    if not settings.allow_external_llm or not allow_external_transfer:
+        raise ProviderError('Передача в OpenClaw запрещена без двух разрешений')
+    url, model, token = provider_config(settings)
     payload = {
         "model": model, "stream": False, "temperature": 0.1, "max_tokens": 1600,
         "messages": [
-            {"role": "system", "content": SYSTEM_PROMPT},
-            {"role": "user", "content": json.dumps(
-                {"untrusted_context": materials, "untrusted_letter": excerpt,
-                 "untrusted_structure": model_structure(document) if document else {
-                     "images_content_available": False, "visual_layout_available": False,
-                     "complete": False,
-                 }}, ensure_ascii=False
-            )},
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": json.dumps(context, ensure_ascii=False)},
         ],
     }
     # Fresh opaque session; never transmit filename, document ID or user ID.
@@ -157,4 +165,4 @@ async def analyze_with_llm(
         raise ProviderError(f"OpenClaw недоступен: HTTP {exc.response.status_code}") from exc
     except (httpx.HTTPError, KeyError, IndexError, ValueError, TypeError) as exc:
         raise ProviderError(f"Ошибка ответа OpenClaw: {type(exc).__name__}") from exc
-    return verify_findings(extract_json(content), excerpt, contexts[:3], document)
+    return content
