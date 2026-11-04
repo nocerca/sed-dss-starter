@@ -7,7 +7,7 @@ packages = ["app"]
 
 [project]
 name = "sed-dss"
-version = "0.5.0"
+version = "0.5.1"
 description = "Гибридная СППР для контроля исходящей деловой корреспонденции"
 requires-python = ">=3.11"
 dependencies = [

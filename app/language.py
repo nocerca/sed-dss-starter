@@ -47,7 +47,7 @@ def local_endpoint(settings: Settings) -> str:
 def decode_matches(payload: dict, text: str, document: ParsedDocument) -> list[Finding]:
     matches = payload.get("matches")
     if not isinstance(matches, list):
-        raise LanguageCheckError("Некорректная схема ответа локального языкового модуля")
+        raise LanguageCheckError("Ответ LanguageTool не содержит список matches; языковые замечания не приняты. Проверьте, что запущен локальный сервер версии 6.6.")
     encoded = text.encode("utf-16-le")
     findings = []
     seen = set()
@@ -84,7 +84,7 @@ def decode_matches(payload: dict, text: str, document: ParsedDocument) -> list[F
         findings.append(Finding(
             code=("LT_" + rule_id)[:90], category="language", severity="info",
             message=message[:1000], evidence=evidence[:600],
-            recommendation=("Возможные варианты: " + "; ".join(suggestions)) if suggestions else "Проверьте формулировку с учётом контекста.",
+            recommendation=(f"Для фрагмента «{evidence[:100]}» движок предлагает: " + "; ".join(suggestions)) if suggestions else f"Проверьте фрагмент «{evidence[:100]}» по объяснению замечания. Готового варианта исправления LanguageTool не предложил.",
             source_ref=f"LanguageTool:6.6:{rule_id}", method="language_tool", verified=False,
             fragment_id=fragment_for_evidence(document, evidence), rule_version="6.6",
         ))
@@ -105,11 +105,30 @@ async def check_language(settings: Settings, document: ParsedDocument) -> Langua
                 async for chunk in response.aiter_bytes():
                     body.extend(chunk)
                     if len(body) > MAX_RESPONSE_BYTES:
-                        raise LanguageCheckError("Ответ локального языкового модуля слишком большой")
+                        raise LanguageCheckError("Ответ LanguageTool превысил лимит 1 МиБ; языковые результаты не приняты. Проверьте локальный сервер или повторите проверку меньшего фрагмента текста.")
         payload = json.loads(body)
         if not isinstance(payload, dict) or not str(payload.get("software", {}).get("version", "")).startswith("6.6"):
-            raise LanguageCheckError("Ожидался локальный LanguageTool 6.6")
+            raise LanguageCheckError("Ответ не подтвердил версию LanguageTool 6.6; языковые замечания не приняты. Запустите контейнер languagetool из текущего Compose-файла.")
         return LanguageResult(decode_matches(payload, excerpt, document), len(excerpt),
                               len(excerpt) < len(document.text), "6.6")
-    except (httpx.HTTPError, ValueError, TypeError, AttributeError) as exc:
-        raise LanguageCheckError("Локальный языковой модуль не завершил проверку") from exc
+    except httpx.TimeoutException as exc:
+        raise LanguageCheckError(
+            f"LanguageTool не ответил за {settings.language_tool_timeout_seconds:g} с. "
+            "Локальные правила сохранены, языковых результатов нет. Проверьте готовность контейнера languagetool "
+            "командой docker compose --profile language ps; после его запуска повторите анализ с новым Idempotency-Key."
+        ) from exc
+    except httpx.HTTPStatusError as exc:
+        raise LanguageCheckError(
+            f"Локальный LanguageTool вернул HTTP {exc.response.status_code}; языковая проверка не выполнена. "
+            "Проверьте состояние контейнера languagetool и его локальные журналы. Результаты остальных правил сохранены."
+        ) from exc
+    except httpx.RequestError as exc:
+        raise LanguageCheckError(
+            "Не удалось соединиться с локальным LanguageTool. Запустите docker compose --profile language up -d "
+            "и проверьте, что API и languagetool подключены к внутренней сети language. Языковых результатов нет; остальные правила сохранены."
+        ) from exc
+    except (ValueError, TypeError, AttributeError) as exc:
+        raise LanguageCheckError(
+            "LanguageTool вернул ответ, который не удалось разобрать по схеме 6.6. Языковые результаты не приняты. "
+            "Проверьте версию локального контейнера languagetool; остальные правила сохранены."
+        ) from exc

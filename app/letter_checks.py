@@ -5,6 +5,7 @@ from collections import Counter
 from dataclasses import dataclass
 from datetime import date
 
+from app.diagnostics import CHECK_ROLES, policy_text
 from app.document_parser import ParagraphInfo, ParsedDocument
 from app.rule_registry import RuleSpec
 from app.schemas import Finding
@@ -134,17 +135,20 @@ def evaluate_policy(document: ParsedDocument, rules: list[RuleSpec]) -> tuple[li
             return
         reason += ". " + rule.policy_specification["implementation_scope"]
         status = "insufficient_data" if valid is None else ("pass" if valid else "violation")
+        message, recommendation = policy_text(rule.code, fragment, expected, observed, status)
         outcomes.append({"code": rule.code, "rule_version": rule.version, "outcome": status,
                          "fragment_id": fragment, "expected": expected, "observed": observed,
-                         "reason": reason, "source_ref": rule.source.ref})
+                         "reason": (message + ' ' + reason) if valid is None else reason,
+                         "message": message, "recommendation": recommendation,
+                         "source_ref": rule.source.ref})
         if valid is False:
             if len(findings) >= MAX_FINDINGS:
                 truncated = True
                 return
             findings.append(Finding(
                 code=rule.code, category=rule.category, severity=rule.severity,
-                message=rule.description, recommendation=rule.recommendation,
-                evidence=f"Ожидается: {expected}; обнаружено: {observed}"[:600],
+                message=message[:1000], recommendation=recommendation[:1000],
+                evidence=message[:600],
                 fragment_id=fragment, source_ref=rule.source.ref, rule_version=rule.version,
                 expected=expected, observed=observed, applicability_reason=reason,
             ))
@@ -163,17 +167,11 @@ def evaluate_policy(document: ParsedDocument, rules: list[RuleSpec]) -> tuple[li
                 valid = all(abs(observed[key] - value) <= 0.1 for key, value in expected.items()) if known else None
                 if section.mirrored_margins or section.gutter_mm:
                     valid = None
+                observed.update(mirrored_margins=section.mirrored_margins, gutter_mm=section.gutter_mm)
                 record(rule, f"section[{section.index}]", expected, observed, valid,
                        "Выбран профиль организации; поля раздела в мм. Зеркальные поля/переплёт требуют раскладки")
             continue
-        role = ({"ORG_BODY_FONT": "body", "ORG_BODY_FONT_SIZE": "body",
-                 "ORG_BODY_LINE_SPACING": "body", "ORG_BODY_FIRST_LINE": "body",
-                 "ORG_DATE_FORMAT": "date", "ORG_REFERENCE_DATA_FONT": "reference_data",
-                 "ORG_RECIPIENT_FONT": "recipient", "ORG_RECIPIENT_COPY_LABEL": "recipient",
-                 "ORG_SUBJECT_FONT": "subject", "ORG_ATTACHMENT_FONT": "attachment",
-                 "ORG_SIGNATURE_FONT": "signature", "ORG_SIGNATURE_FORBIDDEN_PREFIX": "signature",
-                 "ORG_EXECUTOR_FONT": "executor", "ORG_EXECUTOR_SPACING": "executor",
-                 "ORG_EXECUTOR_CONTACT": "executor"})[rule.code]
+        role = CHECK_ROLES[rule.code]
         paragraphs = roles.blocks[role]
         if not paragraphs:
             record(rule, None, expected, {}, None, f"Не установлена роль {role}; отсутствие реквизита не доказано")
@@ -201,7 +199,8 @@ def evaluate_policy(document: ParsedDocument, rules: list[RuleSpec]) -> tuple[li
                             None if observed["bold"] is None else observed["bold"] is False,
                         ]
                         valid = False if False in properties else (None if None in properties else True)
-                    record(rule, run.fragment_id, expected, observed, valid, roles.basis[role])
+                    actual_expected = {**expected, "family": body_font[0], "size_pt": body_font[1]} if "match" in expected and body_font else expected
+                    record(rule, run.fragment_id, actual_expected, observed, valid, roles.basis[role])
                 continue
             if rule.code == "ORG_BODY_FIRST_LINE":
                 observed = {"first_line_mm": paragraph.first_line_indent_mm,
@@ -230,9 +229,12 @@ def evaluate_policy(document: ParsedDocument, rules: list[RuleSpec]) -> tuple[li
                             "phone_found": bool(PHONE.search(text))}
                 # Only check contact fields. Physical last-page placement is not inferred.
                 valid = all(observed.values()) if not any(p.image_count for p in nearby) else None
+                observed['image_references'] = sum(p.image_count for p in nearby)
             elif rule.code == "ORG_SIGNATURE_FORBIDDEN_PREFIX":
                 observed = {"forbidden_prefix_found": bool(re.match(r"^(?:За\s+|/)", paragraph.text.strip(), re.I))}
                 valid = not observed["forbidden_prefix_found"]
+                if match := re.match(r'^(За\s+|/)', paragraph.text.strip(), re.I):
+                    observed['forbidden_prefix'] = match[0].strip()
             elif rule.code == "ORG_RECIPIENT_COPY_LABEL":
                 observed = {"copy_label_found": bool(re.match(r"^Копия\b", paragraph.text.strip(), re.I))}
                 # A label alone does not establish that this is recipient 2..4.

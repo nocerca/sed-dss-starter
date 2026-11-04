@@ -27,6 +27,7 @@ from sqlalchemy.orm import Session
 from app import api_docs
 from app.config import get_settings
 from app.db import SessionLocal, engine, get_db
+from app.diagnostics import local_warnings
 from app.document_context import document_profile
 from app.document_parser import DocumentParseError, parse_docx, parse_knowledge
 from app.idempotency import fingerprints, persist_run, replay
@@ -55,7 +56,7 @@ async def lifespan(app: FastAPI):
     yield
 
 
-app = FastAPI(title="SED DSS — анализ исходящих писем", version="0.5.0", lifespan=lifespan,
+app = FastAPI(title="SED DSS — анализ исходящих писем", version="0.5.1", lifespan=lifespan,
               description=api_docs.API_DESCRIPTION,
               openapi_tags=[
                   {"name": "Анализ", "description": "Проверка DOCX и объяснение результата. Решение принимает человек."},
@@ -214,12 +215,9 @@ async def analyze(request: Request, response: Response, file: UploadFile = File(
         policy_metrics["status"] = "completed"
         findings.extend(policy_findings)
     timings["rules_ms"] = round((perf_counter() - phase) * 1000, 3)
-    warnings = ["Демонстрационные эвристики не являются формальной сертификацией по ГОСТ."]
-    warnings.extend(doc.limitations)
-    if policy_profile:
-        warnings.append("Проверяется реализованная часть выбранного профиля инструкции. Исходы и недостаточные данные — metrics.policy_checks. Роли реквизитов выделены эвристически; геометрия страниц не подтверждена.")
+    warnings = local_warnings(doc, policy_metrics)
     if profile["classification"] == "likely_non_letter":
-        warnings.append("По локальным эвристическим признакам это может быть учебная работа, а не исходящее письмо. Применимость проверки делового письма не подтверждена.")
+        warnings.append("В начале документа найден заголовок учебной работы и минимум два характерных раздела (цель, ход работы, задание или вывод). Возможно, это учебная работа. Для проверки служебной переписки выберите исходящее письмо; текущий анализ не заблокирован.")
     mode, provider, status = "rules_only", "none", "partial" if policy_metrics.get("truncated") else "completed"
     if policy_metrics.get("truncated"):
         warnings.append("Достигнут лимит 2000 результатов или 200 замечаний профиля; проверка неполная.")
@@ -256,9 +254,10 @@ async def analyze(request: Request, response: Response, file: UploadFile = File(
                                          "engine": "LanguageTool", "version": language.engine_version,
                                          "checked_characters": language.checked_characters,
                                          "truncated": language.truncated, "findings": len(language.findings)}
-            warnings.append("Локальные языковые замечания требуют проверки человеком; словарь может не знать имён, сокращений и терминов.")
+            if language.findings:
+                warnings.append(f"LanguageTool предложил замечаний: {len(language.findings)}; проверено символов: {language.checked_characters}. В findings указаны конкретные цитаты и варианты правок. Имена, сокращения и специальные термины сверьте со своим словарём перед исправлением.")
             if language.truncated:
-                warnings.append("LanguageTool проверил только начало документа в пределах 20 000 единиц UTF-16.")
+                warnings.append(f"LanguageTool проверил первые {language.checked_characters} символов Python из {len(doc.text)} (лимит 20 000 единиц UTF-16). Оставшийся текст не проверялся на орфографию и грамматику; проверьте его отдельно.")
         except LanguageCheckError as exc:
             status = "partial"
             metrics["language_check"] = {"requested": True, "status": "partial"}

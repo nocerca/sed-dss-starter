@@ -142,8 +142,8 @@ def report_example(mode: str, status: str) -> dict:
         "mode": mode, "status": status, "provider": "none" if mode == "rules_only" else "openclaw",
         "findings": [{
             "code": "CONTENT_VAGUE_DEADLINE", "category": "content", "severity": "warning",
-            "message": "Срок сформулирован неопределённо.", "evidence": "в кратчайшие сроки",
-            "recommendation": "Укажите согласованный срок.", "source_ref": "LOCAL-DEMO-CONTENT-001",
+            "message": "Основная часть, блок 1: фраза «в кратчайшие сроки» сама по себе не задаёт дату или длительность выполнения.", "evidence": "в кратчайшие сроки",
+            "recommendation": "Проверьте, указан ли согласованный срок в другом месте письма или переписке. Если срок обязателен и не определён, замените эту фразу подтверждённой датой или периодом; дату автоматически не подставляем.", "source_ref": "LOCAL-DEMO-CONTENT-001",
             "method": "rule", "verified": True, "fragment_id": "body/p[0]", "rule_version": "1.0.1",
         }],
         "metrics": {"total_findings": 1, "by_category": {"content": 1},
@@ -151,8 +151,8 @@ def report_example(mode: str, status: str) -> dict:
                     "applied_rules": {code: "1.0.1" for code in [
                         "EMPTY_DOCUMENT", "CONTENT_VAGUE_DEADLINE", "CONTENT_VAGUE_OBJECT",
                         "LANG_LONG_PARAGRAPH", "FMT_MANY_FONTS",
-                    ]}},
-        "warnings": (["Демонстрационные эвристики не являются формальной сертификацией по ГОСТ."]
+                    ]}, "policy_checks": {"profile": None, "status": "not_requested"}},
+        "warnings": (["Профиль инструкции не выбран: поля, кегль, абзацные отступы, даты и телефон исполнителя по этой инструкции не проверялись. Для них передайте policy_profile=office_instruction_letters."]
                      + (["OpenClaw недоступен: HTTP 503"] if status == "partial" else [])
                      + (["Замечания модели требуют проверки человеком."] if mode == "hybrid" else [])),
         "created_at": "2026-01-01T12:00:00Z", "external_document_id": "synthetic-sed-001",
