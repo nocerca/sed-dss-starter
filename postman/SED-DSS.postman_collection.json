@@ -54,6 +54,11 @@
       "key": "policy_idempotency_key",
       "value": "",
       "type": "string"
+    },
+    {
+      "key": "cached_language_report_id",
+      "value": "",
+      "type": "string"
     }
   ],
   "item": [
@@ -176,6 +181,11 @@
                   "key": "use_language_checks",
                   "value": "false",
                   "type": "text"
+                },
+                {
+                  "key": "use_cache",
+                  "value": "true",
+                  "type": "text"
                 }
               ]
             }
@@ -258,6 +268,11 @@
                   "key": "use_language_checks",
                   "value": "false",
                   "type": "text"
+                },
+                {
+                  "key": "use_cache",
+                  "value": "true",
+                  "type": "text"
                 }
               ]
             }
@@ -318,6 +333,11 @@
                   "key": "use_language_checks",
                   "value": "false",
                   "type": "text"
+                },
+                {
+                  "key": "use_cache",
+                  "value": "true",
+                  "type": "text"
                 }
               ]
             }
@@ -372,6 +392,11 @@
                 },
                 {
                   "key": "use_language_checks",
+                  "value": "true",
+                  "type": "text"
+                },
+                {
+                  "key": "use_cache",
                   "value": "true",
                   "type": "text"
                 }
@@ -450,6 +475,11 @@
                 {
                   "key": "use_language_checks",
                   "value": "false",
+                  "type": "text"
+                },
+                {
+                  "key": "use_cache",
+                  "value": "true",
                   "type": "text"
                 }
               ]
@@ -710,6 +740,11 @@
                   "type": "text"
                 },
                 {
+                  "key": "use_cache",
+                  "value": "true",
+                  "type": "text"
+                },
+                {
                   "key": "policy_profile",
                   "type": "text",
                   "value": "office_instruction_letters"
@@ -794,6 +829,11 @@
                 {
                   "key": "use_language_checks",
                   "value": "false",
+                  "type": "text"
+                },
+                {
+                  "key": "use_cache",
+                  "value": "true",
                   "type": "text"
                 },
                 {
@@ -884,6 +924,11 @@
                   "type": "text"
                 },
                 {
+                  "key": "use_cache",
+                  "value": "true",
+                  "type": "text"
+                },
+                {
                   "key": "policy_profile",
                   "type": "text",
                   "value": "office_instruction_letters"
@@ -968,6 +1013,11 @@
                 {
                   "key": "use_language_checks",
                   "value": "false",
+                  "type": "text"
+                },
+                {
+                  "key": "use_cache",
+                  "value": "true",
                   "type": "text"
                 },
                 {
@@ -1058,6 +1108,11 @@
                   "type": "text"
                 },
                 {
+                  "key": "use_cache",
+                  "value": "true",
+                  "type": "text"
+                },
+                {
                   "key": "policy_profile",
                   "type": "text",
                   "value": "office_instruction_letters"
@@ -1142,6 +1197,11 @@
                 {
                   "key": "use_language_checks",
                   "value": "false",
+                  "type": "text"
+                },
+                {
+                  "key": "use_cache",
+                  "value": "true",
                   "type": "text"
                 },
                 {
@@ -1232,6 +1292,11 @@
                   "type": "text"
                 },
                 {
+                  "key": "use_cache",
+                  "value": "true",
+                  "type": "text"
+                },
+                {
                   "key": "policy_profile",
                   "type": "text",
                   "value": "office_instruction_letters"
@@ -1316,6 +1381,11 @@
                 {
                   "key": "use_language_checks",
                   "value": "false",
+                  "type": "text"
+                },
+                {
+                  "key": "use_cache",
+                  "value": "true",
                   "type": "text"
                 },
                 {
@@ -1406,6 +1476,11 @@
                   "type": "text"
                 },
                 {
+                  "key": "use_cache",
+                  "value": "true",
+                  "type": "text"
+                },
+                {
                   "key": "policy_profile",
                   "type": "text",
                   "value": "office_instruction_letters"
@@ -1493,6 +1568,11 @@
                   "type": "text"
                 },
                 {
+                  "key": "use_cache",
+                  "value": "true",
+                  "type": "text"
+                },
+                {
                   "key": "policy_profile",
                   "type": "text",
                   "value": "office_instruction_letters"
@@ -1527,6 +1607,226 @@
                   "  pm.expect(report.findings.map(f => f.code)).to.include(\"ORG_SIGNATURE_FONT\");",
                   "  pm.expect(report.provider).to.eql(\"none\");",
                   "  pm.expect(report.status).to.eql(\"completed\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "07 — Кэш тяжёлых проверок без внешней модели",
+      "item": [
+        {
+          "name": "LanguageTool: первый запуск или кэш",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": "{{base_url}}/api/v1/analyze",
+            "description": "Нужен локальный LanguageTool. Первый Send обычно Analysis-Cache=miss, повтор тех же байтов и параметров — hit и прежний id. Заголовок Idempotency-Key намеренно отсутствует: это проверка кэша, не идемпотентности.",
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "file",
+                  "type": "file",
+                  "src": "examples/postman_synthetic.docx"
+                },
+                {
+                  "key": "use_llm",
+                  "value": "false",
+                  "type": "text"
+                },
+                {
+                  "key": "allow_external_transfer",
+                  "value": "false",
+                  "type": "text"
+                },
+                {
+                  "key": "document_type",
+                  "value": "unspecified",
+                  "type": "text"
+                },
+                {
+                  "key": "external_document_id",
+                  "value": "postman-synthetic-demo",
+                  "type": "text",
+                  "disabled": true
+                },
+                {
+                  "key": "use_language_checks",
+                  "value": "true",
+                  "type": "text"
+                },
+                {
+                  "key": "use_cache",
+                  "value": "true",
+                  "type": "text"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", () => pm.response.to.have.status(200));",
+                  "const report = pm.response.json();",
+                  "pm.test(\"Отчёт сохранён\", () => pm.expect(report.id).to.be.a(\"string\"));",
+                  "pm.test(\"Есть трассировка\", () => pm.expect(pm.response.headers.get(\"X-Request-ID\")).to.be.a(\"string\"));",
+                  "if (pm.response.code === 200 && report.id) {",
+                  "  pm.collectionVariables.set(\"report_id\", report.id);",
+                  "  pm.collectionVariables.set(\"request_id\", report.request_id);",
+                  "}",
+                  "pm.test(\"Тяжёлая проверка завершена\", () => pm.expect(report.status).to.eql(\"completed\"));",
+                  "pm.test(\"Кэш разрешён\", () => pm.expect([\"hit\", \"miss\"]).to.include(pm.response.headers.get(\"Analysis-Cache\")));",
+                  "pm.collectionVariables.set(\"cached_language_report_id\", report.id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "LanguageTool: повтор из кэша",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": "{{base_url}}/api/v1/analyze",
+            "description": "Сначала выполните предыдущий запрос. Сохраните те же байты файла и поля; серверный кэш должен быть включён, TTL не истёк.",
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "file",
+                  "type": "file",
+                  "src": "examples/postman_synthetic.docx"
+                },
+                {
+                  "key": "use_llm",
+                  "value": "false",
+                  "type": "text"
+                },
+                {
+                  "key": "allow_external_transfer",
+                  "value": "false",
+                  "type": "text"
+                },
+                {
+                  "key": "document_type",
+                  "value": "unspecified",
+                  "type": "text"
+                },
+                {
+                  "key": "external_document_id",
+                  "value": "postman-synthetic-demo",
+                  "type": "text",
+                  "disabled": true
+                },
+                {
+                  "key": "use_language_checks",
+                  "value": "true",
+                  "type": "text"
+                },
+                {
+                  "key": "use_cache",
+                  "value": "true",
+                  "type": "text"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", () => pm.response.to.have.status(200));",
+                  "const report = pm.response.json();",
+                  "pm.test(\"Отчёт сохранён\", () => pm.expect(report.id).to.be.a(\"string\"));",
+                  "pm.test(\"Есть трассировка\", () => pm.expect(pm.response.headers.get(\"X-Request-ID\")).to.be.a(\"string\"));",
+                  "if (pm.response.code === 200 && report.id) {",
+                  "  pm.collectionVariables.set(\"report_id\", report.id);",
+                  "  pm.collectionVariables.set(\"request_id\", report.request_id);",
+                  "}",
+                  "pm.test(\"Результат взят из кэша\", () => {",
+                  "  pm.expect(pm.response.headers.get(\"Analysis-Cache\")).to.eql(\"hit\");",
+                  "  pm.expect(report.id).to.eql(pm.collectionVariables.get(\"cached_language_report_id\"));",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "LanguageTool: новый расчёт без кэша",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": "{{base_url}}/api/v1/analyze",
+            "description": "use_cache=false, Idempotency-Key отсутствует: новый локальный расчёт. Существующую запись кэша не перезаписывает. Внешняя модель выключена.",
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "file",
+                  "type": "file",
+                  "src": "examples/postman_synthetic.docx"
+                },
+                {
+                  "key": "use_llm",
+                  "value": "false",
+                  "type": "text"
+                },
+                {
+                  "key": "allow_external_transfer",
+                  "value": "false",
+                  "type": "text"
+                },
+                {
+                  "key": "document_type",
+                  "value": "unspecified",
+                  "type": "text"
+                },
+                {
+                  "key": "external_document_id",
+                  "value": "postman-synthetic-demo",
+                  "type": "text",
+                  "disabled": true
+                },
+                {
+                  "key": "use_language_checks",
+                  "value": "true",
+                  "type": "text"
+                },
+                {
+                  "key": "use_cache",
+                  "value": "false",
+                  "type": "text"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", () => pm.response.to.have.status(200));",
+                  "const report = pm.response.json();",
+                  "pm.test(\"Отчёт сохранён\", () => pm.expect(report.id).to.be.a(\"string\"));",
+                  "pm.test(\"Есть трассировка\", () => pm.expect(pm.response.headers.get(\"X-Request-ID\")).to.be.a(\"string\"));",
+                  "if (pm.response.code === 200 && report.id) {",
+                  "  pm.collectionVariables.set(\"report_id\", report.id);",
+                  "  pm.collectionVariables.set(\"request_id\", report.request_id);",
+                  "}",
+                  "pm.test(\"Кэш обойдён\", () => {",
+                  "  pm.expect(pm.response.headers.get(\"Analysis-Cache\")).to.eql(\"bypass\");",
+                  "  pm.expect(report.id).not.to.eql(pm.collectionVariables.get(\"cached_language_report_id\"));",
                   "});"
                 ]
               }

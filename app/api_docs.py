@@ -55,6 +55,11 @@ ANALYZE_DESCRIPTION = """
 API разберёт DOCX, применит включённые правила и сохранит отчёт.
 
 - **Без модели:** `use_llm=false`. Согласие не запускает модель само по себе.
+- **Кэш тяжёлой проверки:** `use_cache=true` (по умолчанию) допускает повторную выдачу
+  успешного отчёта с моделью/LanguageTool. На hit возвращаются прежние id/created_at/метрики;
+  новое время HTTP-запроса показывает Server-Timing. Состояние — Analysis-Cache=hit/miss/bypass.
+  Для нового вычисления нужны use_cache=false и новый Idempotency-Key (или отсутствие ключа).
+  Согласие на модель проверяется до кэша. Одновременный дубль другого ключа может дать 409/busy.
 - **Инструкция:** `policy_profile=office_instruction_letters` явно выбирает профиль
   организации. Выполняются 16 реализованных проверок/диагностик; остальные положения
   каталога, геометрия и полномочия не подтверждаются. Без поля остаются прежние эвристики.
@@ -190,11 +195,13 @@ ANALYZE_RESPONSES = {
         "headers": {"X-Request-ID": TRACE_HEADER, "Idempotency-Replayed": {
             "description": "Присутствует со значением true при выдаче прежнего отчёта без нового анализа.",
             "schema": {"type": "string", "enum": ["true"]},
-        }},
+        }, "Analysis-Cache": {"description": "hit — выдан сохранённый успешный отчёт; miss — новый тяжёлый запуск; bypass — кэш обойдён, выключен, переполнен или запрос только с быстрыми правилами/идемпотентным повтором.",
+                              "schema": {"type": "string", "enum": ["hit", "miss", "bypass"]}},
+            "Cache-Control": {"description": "no-store: браузер/прокси не должны сохранять приватный ответ.", "schema": {"type": "string"}}},
         "content": {"application/json": {"examples": ANALYSIS_EXAMPLES}},
     },
     409: {
-        "description": "Нет согласия/серверного разрешения; ключ использован для другого запроса; анализ ещё идёт; либо IDEMPOTENCY_SECRET не настроен.",
+        "description": "Нет согласия/серверного разрешения; ключ использован для другого запроса; анализ ещё идёт; IDEMPOTENCY_SECRET не настроен; либо совпадающий тяжёлый запрос уже выполняется (Analysis-Cache=busy, Retry-After=2).",
         "headers": {"Retry-After": {"description": "При processing: 2 секунды до повторной проверки тем же ключом. Новый анализ не запускается.",
                                     "schema": {"type": "string", "example": "2"}}},
         "content": {"application/json": {"example": {"detail": "Для внешней LLM нужны настроенный провайдер, ALLOW_EXTERNAL_LLM=true и allow_external_transfer=true в каждом запросе"}}},

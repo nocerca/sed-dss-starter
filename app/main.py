@@ -22,9 +22,11 @@ from fastapi import Path as ApiPath
 from fastapi.responses import JSONResponse
 from fastapi.security import APIKeyHeader
 from sqlalchemy import select, text, update
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from app import api_docs
+from app.analysis_cache import AnalysisCache
 from app.config import get_settings
 from app.db import SessionLocal, engine, get_db
 from app.diagnostics import local_warnings
@@ -43,7 +45,7 @@ from app.models import (
 )
 from app.providers import ProviderError, analyze_with_llm
 from app.retrieval import retrieve
-from app.rule_registry import load_registry, register_rules
+from app.rule_registry import RuleSet, load_registry, register_rules
 from app.rules import applicable_rules, inspect_document
 from app.schemas import AnalysisResponse, DocumentType, Finding, KnowledgeItem, SourceKind
 
@@ -53,10 +55,16 @@ async def lifespan(app: FastAPI):
     upgrade_database(engine)
     with SessionLocal() as db:
         register_rules(db, load_registry())
-    yield
+    settings = get_settings()
+    app.state.analysis_cache = AnalysisCache(settings.analysis_cache_ttl_seconds,
+                                             settings.analysis_cache_max_entries)
+    try:
+        yield
+    finally:
+        app.state.analysis_cache.clear()
 
 
-app = FastAPI(title="SED DSS — анализ исходящих писем", version="0.5.1", lifespan=lifespan,
+app = FastAPI(title="SED DSS — анализ исходящих писем", version="0.6.0", lifespan=lifespan,
               description=api_docs.API_DESCRIPTION,
               openapi_tags=[
                   {"name": "Анализ", "description": "Проверка DOCX и объяснение результата. Решение принимает человек."},
@@ -74,6 +82,8 @@ async def trace_request(request: Request, call_next):
     request.state.request_id = str(uuid4())
     started = perf_counter()
     response = await call_next(request)
+    if request.url.path.startswith('/api/v1/'):
+        response.headers['Cache-Control'] = 'no-store'
     response.headers["X-Request-ID"] = request.state.request_id
     response.headers["Server-Timing"] = f"app;dur={(perf_counter() - started) * 1000:.2f}"
     return response
@@ -118,6 +128,10 @@ def capabilities():
             "max_document_bytes": s.max_document_bytes,
             "local_language_checks_available": s.language_tool_enabled,
             "policy_profiles": [PROFILE_ID], "implemented_policy_checks": list(IMPLEMENTED),
+            "analysis_cache": {"enabled": s.analysis_cache_enabled, "scope": "process",
+                               "ttl_seconds": s.analysis_cache_ttl_seconds,
+                               "max_entries": s.analysis_cache_max_entries,
+                               "stages": ["language_tool", "llm"], "stores": "report_references_only"},
             "automatic_document_rewrite": False, "sed_integration": "REST API"}
 
 
@@ -155,6 +169,7 @@ async def analyze(request: Request, response: Response, file: UploadFile = File(
                   description="Исходящее деловое письмо DOCX. По умолчанию до 5 МиБ; фактический лимит показывает /capabilities. Передаётся файл, не строка пути. Извлекаются текст и часть структуры; изображения не анализируются. Оригинал не изменяется."),
                   use_llm: bool = Form(False, description="Нужна ли модельная часть. false — локальная обработка; true — дополнительно модель через OpenClaw. LanguageTool включается отдельным флагом use_language_checks. Для LLM нужны также allow_external_transfer=true и глобальное разрешение сервера. По умолчанию false."),
                   use_language_checks: bool = Form(False, description="Добавить локальную проверку русского текста LanguageTool 6.6: орфография, часть грамматики и пунктуации. Нужны профиль Docker language и LANGUAGE_TOOL_ENABLED=true. Внешняя модель не используется. Начальная проверка ограничена 20 000 единицами UTF-16; усечение отражается в warnings. По умолчанию false."),
+                  use_cache: bool = Form(True, description="Для запросов с моделью или LanguageTool разрешить повторное использование успешного отчёта по тем же байтам файла, метаданным, параметрам и конфигурации. По умолчанию true; TTL и включение — /capabilities. Вернётся прежний id/created_at/тайминги отчёта, Analysis-Cache=hit. Для нового вычисления задайте false и новый Idempotency-Key; false обходит чтение и запись кэша. Идемпотентный повтор со старым ключом всё равно возвращает прежний отчёт. Только локальные правила без языка/модели не кэшируются."),
                   allow_external_transfer: bool = Form(False, description="Явное согласие именно на этот запрос: передать извлечённый текст и найденные фрагменты базы знаний внешней модели через OpenClaw. Автоматического обезличивания нет. Без true модельный запрос отклоняется с 409. Само согласие при use_llm=false не вызывает модель."),
                   external_document_id: str | None = Form(None, min_length=1, max_length=128,
                   description="Необязательный идентификатор документа в вашей СЭД, 1–128 символов. Для ручного теста можно не заполнять. Сохраняется в отчёте локально, не включается в модельный запрос и не заменяет Idempotency-Key."),
@@ -168,6 +183,8 @@ async def analyze(request: Request, response: Response, file: UploadFile = File(
                   description="Необязательный идентификатор одной операции анализа; не API-ключ и не секрет модели. Например UUID. 8–128 символов ASCII: буквы, цифры, _, ., :, -. Для повтора тех же байтов файла, имени и параметров используйте тот же ключ: вернётся прежний отчёт. Изменённый запрос — 409, обработка ещё идёт — 409, отчёт удалён — 410. Для нового анализа нужен новый ключ. Если не нужен — уберите заголовок целиком; пустое значение даёт 422. {{llm_idempotency_key}} — переменная коллекции Postman, не буквальное значение для Swagger."),
                   db: Session = Depends(get_db)):
     s = get_settings()
+    response.headers['Cache-Control'] = 'no-store'
+    response.headers['Analysis-Cache'] = 'bypass'
     started = perf_counter()
     timings = {stage: None for stage in ("parse_ms", "profile_ms", "rules_ms", "language_ms",
                                          "retrieval_ms", "llm_gateway_ms", "initial_save_ms")}
@@ -191,10 +208,95 @@ async def analyze(request: Request, response: Response, file: UploadFile = File(
             options["use_language_checks"] = True
         if policy_profile:
             options["policy_profile"] = policy_profile
+        if not use_cache:
+            options['use_cache'] = False
         key_hash, request_hash = fingerprints(s.idempotency_secret, idempotency_key, data, options)
         if record := db.get(IdempotencyRecord, key_hash):
             response.headers["Idempotency-Replayed"] = "true"
             return as_response(replay(db, record, request_hash))
+    phase = perf_counter()
+    registry = load_registry()
+    enabled_codes = set(db.scalars(select(RuleDefinition.code).where(RuleDefinition.enabled == 1)).all())
+    timings['rules_ms'] = (perf_counter() - phase) * 1000
+    phase = perf_counter()
+    knowledge = list(db.scalars(select(KnowledgeDocument)).all()) if use_llm else []
+    if use_llm:
+        timings['retrieval_ms'] = (perf_counter() - phase) * 1000
+    cache = request.app.state.analysis_cache
+    cache_key = None
+    if use_cache and s.analysis_cache_enabled and (use_llm or use_language_checks):
+        namespace = {
+            'application': app.version, 'authorization_scope': s.app_api_key,
+            'request': {'filename': filename, 'document_type': document_type.value,
+                        'template_id': template_id, 'policy_profile': policy_profile,
+                        'external_document_id': external_document_id, 'use_llm': use_llm,
+                        'use_language_checks': use_language_checks,
+                        'allow_external_transfer': allow_external_transfer},
+            'registry': registry.model_dump(mode='json'), 'enabled_codes': sorted(enabled_codes),
+            'language': {'enabled': s.language_tool_enabled, 'endpoint': s.language_tool_base_url,
+                         'timeout': s.language_tool_timeout_seconds, 'version': '6.6'},
+            'model': {'provider': s.llm_provider, 'enabled': s.allow_external_llm,
+                      'gateway': s.openclaw_base_url, 'agent': s.openclaw_model,
+                      'gateway_credential': s.openclaw_api_key, 'backend': s.model_backend,
+                      'timeout': s.llm_timeout_seconds, 'retries': s.llm_max_retries,
+                      'yandex': s.yandex_model, 'gigachat': s.gigachat_model, 'zai': s.zai_model},
+            'knowledge': [{'id': item.id, 'kind': item.kind, 'source_ref': item.source_ref,
+                           'content': item.content} for item in sorted(knowledge, key=lambda item: item.id)],
+        }
+        candidate = cache.fingerprint(data, namespace)
+        decision = cache.claim(candidate)
+        if decision.status == 'hit':
+            try:
+                cached = db.get(AnalysisRun, decision.report_id)
+                if cached is not None and cached.status == 'completed':
+                    replayed = False
+                    if key_hash:
+                        cached, replayed = persist_run(db, cached, key_hash, request_hash)
+                        if replayed:
+                            response.headers['Idempotency-Replayed'] = 'true'
+                    response.headers['Analysis-Cache'] = 'bypass' if replayed else 'hit'
+                    return as_response(cached)
+            except SQLAlchemyError:
+                db.rollback()
+                cache.discard(candidate)
+                raise HTTPException(503, 'Не удалось прочитать или связать сохранённый отчёт. '
+                                    'Новый тяжёлый запуск не выполнялся. Проверьте доступность БД и повторите запрос.',
+                                    headers={'Retry-After': '2'}) from None
+            cache.discard(candidate)
+            decision = cache.claim(candidate)
+        if decision.status == 'busy':
+            raise HTTPException(409, 'Такой документ с теми же параметрами уже проверяется. '
+                                'Дождитесь завершения и повторите запрос; после успешного завершения '
+                                'может быть использован кэш. Второй тяжёлый запуск не начат.',
+                                headers={'Retry-After': '2', 'Analysis-Cache': 'busy', 'Cache-Control': 'no-store'})
+        if decision.status == 'miss':
+            cache_key = candidate
+            response.headers['Analysis-Cache'] = 'miss'
+    try:
+        result = await perform_analysis(request, response, db, data, filename, document_type,
+            template_id, policy_profile, external_document_id, use_llm, use_language_checks,
+            allow_external_transfer, key_hash, request_hash, registry, enabled_codes, knowledge, started, timings)
+        if cache_key:
+            replayed = response.headers.get('Idempotency-Replayed') == 'true'
+            cache.finish(cache_key, result.id if result.status == 'completed' and not replayed else None)
+            if replayed:
+                response.headers['Analysis-Cache'] = 'bypass'
+            cache_key = None
+        return result
+    finally:
+        if cache_key:
+            cache.finish(cache_key, None)
+
+
+async def perform_analysis(request: Request, response: Response, db: Session, data: bytes,
+                          filename: str, document_type: DocumentType, template_id: str | None,
+                          policy_profile: str | None, external_document_id: str | None,
+                          use_llm: bool, use_language_checks: bool, allow_external_transfer: bool,
+                          key_hash: str | None,
+                          request_hash: str | None, registry: RuleSet, enabled_codes: set[str],
+                          knowledge: list[KnowledgeDocument], started: float,
+                          timings: dict[str, float | None]) -> AnalysisResponse:
+    s = get_settings()
     phase = perf_counter()
     try:
         doc = parse_docx(data)
@@ -205,8 +307,6 @@ async def analyze(request: Request, response: Response, file: UploadFile = File(
     profile = document_profile(doc)
     timings["profile_ms"] = round((perf_counter() - phase) * 1000, 3)
     phase = perf_counter()
-    registry = load_registry()
-    enabled_codes = set(db.scalars(select(RuleDefinition.code).where(RuleDefinition.enabled == 1)).all())
     findings = inspect_document(doc, document_type, template_id, registry=registry, enabled_codes=enabled_codes)
     selected_rules = applicable_rules(registry, document_type, template_id, enabled_codes, policy_profile)
     policy_metrics = {"profile": None, "status": "not_requested"}
@@ -214,7 +314,7 @@ async def analyze(request: Request, response: Response, file: UploadFile = File(
         policy_findings, policy_metrics = evaluate_policy(doc, selected_rules)
         policy_metrics["status"] = "completed"
         findings.extend(policy_findings)
-    timings["rules_ms"] = round((perf_counter() - phase) * 1000, 3)
+    timings["rules_ms"] = round((perf_counter() - phase) * 1000 + (timings['rules_ms'] or 0), 3)
     warnings = local_warnings(doc, policy_metrics)
     if profile["classification"] == "likely_non_letter":
         warnings.append("В начале документа найден заголовок учебной работы и минимум два характерных раздела (цель, ход работы, задание или вывод). Возможно, это учебная работа. Для проверки служебной переписки выберите исходящее письмо; текущий анализ не заблокирован.")
@@ -265,8 +365,8 @@ async def analyze(request: Request, response: Response, file: UploadFile = File(
         timings["language_ms"] = round((perf_counter() - phase) * 1000, 3)
     if use_llm:
         phase = perf_counter()
-        contexts = retrieve(doc.text, list(db.scalars(select(KnowledgeDocument)).all()))
-        timings["retrieval_ms"] = round((perf_counter() - phase) * 1000, 3)
+        contexts = retrieve(doc.text, knowledge)
+        timings["retrieval_ms"] = round((perf_counter() - phase) * 1000 + (timings['retrieval_ms'] or 0), 3)
         phase = perf_counter()
         try:
             llm_findings = await analyze_with_llm(
@@ -333,13 +433,14 @@ def report(report_id: UUID = ApiPath(..., description="UUID из поля id о�
 @app.delete("/api/v1/reports/{report_id}", status_code=204, dependencies=[Depends(require_api_key)],
             tags=["Отчёты"], summary="Удалить отчёт", responses=api_docs.NOT_FOUND_RESPONSE,
             description="Намеренно удаляет сохранённый отчёт, не исходный файл и не корпус. Успешный ответ 204 без тела. Маркер идемпотентности сохраняется: повтор POST с прежним ключом даст 410 и не вызовет модель заново.")
-def delete_report(report_id: UUID = ApiPath(..., description="UUID отчёта, который нужно намеренно удалить."), db: Session = Depends(get_db)):
+def delete_report(request: Request, report_id: UUID = ApiPath(..., description="UUID отчёта, который нужно намеренно удалить."), db: Session = Depends(get_db)):
     run = db.get(AnalysisRun, str(report_id))
     if not run:
         raise HTTPException(404, "Отчёт не найден")
     db.execute(update(IdempotencyRecord).where(IdempotencyRecord.analysis_id == run.id).values(analysis_id=None))
     db.delete(run)
     db.commit()
+    request.app.state.analysis_cache.invalidate_report(str(report_id))
 
 
 @app.get("/api/v1/rules", dependencies=[Depends(require_api_key)], tags=["Правила"],

@@ -20,6 +20,13 @@ class Settings(BaseSettings):
     language_tool_enabled: bool = False
     language_tool_base_url: str = "http://languagetool:8081/v2"
     language_tool_timeout_seconds: int = Field(default=20, ge=1, le=60)
+    analysis_cache_enabled: bool = True
+    analysis_cache_ttl_seconds: int = Field(default=900, ge=1, le=86400)
+    analysis_cache_max_entries: int = Field(default=128, ge=1, le=4096)
+    model_backend: str = 'yandex'
+    yandex_model: str = 'aliceai-llm-flash'
+    gigachat_model: str = 'GigaChat-2'
+    zai_model: str = 'glm-4.7-flash'
 
 
 @lru_cache

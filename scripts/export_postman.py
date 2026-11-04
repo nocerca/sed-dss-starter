@@ -34,12 +34,13 @@ def request(name: str, method: str, path: str, *, description: str = "",
     return result
 
 
-def analysis_form(*, external: bool = False, language: bool = False) -> list[dict]:
+def analysis_form(*, external: bool = False, language: bool = False, cache: bool = True) -> list[dict]:
     fields = {
         "use_llm": "true" if external else "false",
         "allow_external_transfer": "{{external_consent}}" if external else "false",
         "document_type": "unspecified", "external_document_id": "postman-synthetic-demo",
         "use_language_checks": "true" if language else "false",
+        "use_cache": "true" if cache else "false",
     }
     return [{"key": "file", "type": "file", "src": "examples/postman_synthetic.docx"}] + [
         {"key": key, "value": value, "type": "text", **({"disabled": True} if key == "external_document_id" else {})} for key, value in fields.items()
@@ -128,6 +129,26 @@ pm.test("Выводы модели требуют проверки", () => {
             request("Версии правила о сроке", "GET", "/api/v1/rules/CONTENT_VAGUE_DEADLINE/versions"),
             request("Список документов базы знаний", "GET", "/api/v1/knowledge/documents"),
         ]},
+        {"name": "07 — Кэш тяжёлых проверок без внешней модели", "item": [
+            request("LanguageTool: первый запуск или кэш", "POST", "/api/v1/analyze",
+                form=analysis_form(language=True), script=capture + '''
+pm.test("Тяжёлая проверка завершена", () => pm.expect(report.status).to.eql("completed"));
+pm.test("Кэш разрешён", () => pm.expect(["hit", "miss"]).to.include(pm.response.headers.get("Analysis-Cache")));
+pm.collectionVariables.set("cached_language_report_id", report.id);''',
+                description="Нужен локальный LanguageTool. Первый Send обычно Analysis-Cache=miss, повтор тех же байтов и параметров — hit и прежний id. Заголовок Idempotency-Key намеренно отсутствует: это проверка кэша, не идемпотентности."),
+            request("LanguageTool: повтор из кэша", "POST", "/api/v1/analyze",
+                form=analysis_form(language=True), script=capture + '''
+pm.test("Результат взят из кэша", () => {
+  pm.expect(pm.response.headers.get("Analysis-Cache")).to.eql("hit");
+  pm.expect(report.id).to.eql(pm.collectionVariables.get("cached_language_report_id"));
+});''', description="Сначала выполните предыдущий запрос. Сохраните те же байты файла и поля; серверный кэш должен быть включён, TTL не истёк."),
+            request("LanguageTool: новый расчёт без кэша", "POST", "/api/v1/analyze",
+                form=analysis_form(language=True, cache=False), script=capture + '''
+pm.test("Кэш обойдён", () => {
+  pm.expect(pm.response.headers.get("Analysis-Cache")).to.eql("bypass");
+  pm.expect(report.id).not.to.eql(pm.collectionVariables.get("cached_language_report_id"));
+});''', description="use_cache=false, Idempotency-Key отсутствует: новый локальный расчёт. Существующую запись кэша не перезаписывает. Внешняя модель выключена."),
+        ]},
     ]
     policy_cases = [
         ("01_left_margin", "ORG_MARGINS"), ("02_body_font", "ORG_BODY_FONT"),
@@ -152,6 +173,7 @@ pm.test("Выводы модели требуют проверки", () => {
             description="Синтетическое письмо с одной контролируемой правкой. Создать файлы: python scripts/create_letter_demos.py. Модель не вызывается. Если файл не найден, выберите его вручную в Body → file.",
         ))
     items.append({"name": "06 — Проверки по инструкции: 10 документов", "item": policy_items})
+    items.sort(key=lambda folder: folder['name'])
     return {
         "info": {"name": "SED-DSS — локальный API v1", "schema": SCHEMA,
                  "description": "Импортируйте также SED-DSS.local.postman_environment.json. Заполните только app_api_key из .env. Ключ Z.AI и токен OpenClaw сюда не добавлять. Рабочая папка Postman — корень проекта; либо выберите DOCX в Body → form-data → file. Инструкция: docs/POSTMAN.md. Без внешнего согласия сервер даёт HTTP 409. Удаляющий запрос по умолчанию пропускается. Локальный язык включается отдельно через профиль language."},
@@ -161,7 +183,7 @@ pm.test("Выводы модели требуют проверки", () => {
             {"key": "in", "value": "header", "type": "string"},
         ]},
         "variable": [{"key": key, "value": "", "type": "string"} for key in
-                     ("report_id", "request_id", "rules_report_id", "rules_idempotency_key", "llm_idempotency_key", "policy_idempotency_key")],
+                     ("report_id", "request_id", "rules_report_id", "rules_idempotency_key", "llm_idempotency_key", "policy_idempotency_key", "cached_language_report_id")],
         "item": items,
     }
 
