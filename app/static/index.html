@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <meta name="description" content="Проверка исходящих деловых писем: оформление, язык и содержание.">
+  <title>Проверка письма · SED DSS</title>
+  <link rel="icon" href="/assets/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/assets/app.css">
+  <script type="module" src="/assets/app.mjs"></script>
+</head>
+<body>
+  <a class="skip-link" href="#main">Перейти к содержимому</a>
+  <header class="topbar">
+    <div class="topbar-inner">
+      <a class="brand" href="#analyze" aria-label="SED DSS — проверка писем">
+        <span class="brand-mark"><svg aria-hidden="true"><use href="/assets/icons.svg#letter"></use></svg></span>
+        <span>SED <strong>DSS</strong></span>
+      </a>
+      <span class="header-divider"></span>
+      <span class="workspace">Исходящие письма</span>
+      <div class="header-actions">
+        <button id="theme-toggle" class="icon-button" type="button" aria-label="Переключить тему" title="Переключить тему"><svg aria-hidden="true"><use href="/assets/icons.svg#theme"></use></svg></button>
+        <button id="connection-button" class="button button-small" type="button"><span id="connection-dot" class="status-dot"></span><span id="connection-label">Подключить</span></button>
+      </div>
+    </div>
+  </header>
+  <div class="navigation-shell">
+    <nav class="navigation" aria-label="Основная навигация">
+      <a href="#analyze" data-view="analyze" class="nav-link" aria-current="page"><svg aria-hidden="true"><use href="/assets/icons.svg#check-file"></use></svg>Проверка</a>
+      <a href="#reports" data-view="reports" class="nav-link"><svg aria-hidden="true"><use href="/assets/icons.svg#history"></use></svg>Отчёты</a>
+      <a href="#rules" data-view="rules" class="nav-link"><svg aria-hidden="true"><use href="/assets/icons.svg#book"></use></svg>Правила</a>
+      <a href="/docs" target="_blank" rel="noopener noreferrer" class="nav-link api-link"><svg aria-hidden="true"><use href="/assets/icons.svg#code"></use></svg>API<svg class="external-icon" aria-hidden="true"><use href="/assets/icons.svg#external"></use></svg></a>
+    </nav>
+  </div>
+  <main id="main" class="main" tabindex="-1">
+    <section id="analyze-view" class="view" aria-labelledby="analyze-heading">
+      <div id="upload-screen">
+        <div class="page-heading"><div><h1 id="analyze-heading">Проверка письма</h1><p>Оформление, язык и содержание — с объяснением каждого замечания.</p></div></div>
+        <div class="analysis-layout">
+          <form id="analysis-form" class="panel analysis-panel">
+            <fieldset id="analysis-fields">
+              <div class="panel-heading"><h2><svg aria-hidden="true"><use href="/assets/icons.svg#file"></use></svg>Документ</h2><span id="upload-limit" class="muted small">DOCX · до 5 МиБ</span></div>
+              <div class="form-body">
+                <div id="dropzone" class="dropzone">
+                  <input id="file-input" type="file" accept=".docx" aria-label="Выбрать письмо DOCX">
+                  <div id="dropzone-idle" class="dropzone-idle"><span class="upload-icon"><svg aria-hidden="true"><use href="/assets/icons.svg#upload"></use></svg></span><p><span class="file-link">Выберите DOCX</span> или перетащите сюда</p><span class="muted small">Исходный файл останется без изменений</span></div>
+                  <div id="selected-file" class="selected-file" hidden><span class="selected-file-icon"><svg aria-hidden="true"><use href="/assets/icons.svg#check-file"></use></svg></span><div><strong id="selected-filename"></strong><span id="selected-filesize" class="muted small"></span></div><span class="replace-file small">Заменить</span></div>
+                </div>
+                <p id="file-error" class="field-error" role="alert" hidden></p>
+                <div class="field"><label for="policy-profile">Правила оформления</label><select id="policy-profile" name="policy_profile"><option value="">Базовые проверки</option><option value="office_instruction_letters">Инструкция по делопроизводству</option></select><p id="profile-help" class="field-help">Пять локальных эвристик. Профиль инструкции можно выбрать отдельно.</p></div>
+                <div class="checks-heading"><h3>Дополнительные проверки</h3><span class="muted small">Необязательно</span></div>
+                <label class="check-option" for="language-check"><span class="check-option-icon"><svg aria-hidden="true"><use href="/assets/icons.svg#language"></use></svg></span><span class="check-option-text"><strong>Орфография и грамматика</strong><span id="language-help">Локальный LanguageTool. Доступность — после подключения.</span></span><input id="language-check" type="checkbox" role="switch" disabled></label>
+                <label class="check-option" for="model-check"><span class="check-option-icon"><svg aria-hidden="true"><use href="/assets/icons.svg#message"></use></svg></span><span class="check-option-text"><strong>Содержание и формулировки</strong><span id="model-help">Модель через OpenClaw. Доступность — после подключения.</span></span><input id="model-check" type="checkbox" role="switch" disabled></label>
+                <div id="consent-box" class="consent-box" hidden><label class="checkbox-label" for="external-consent"><input id="external-consent" type="checkbox"><span>Разрешаю передать текст этого письма и найденные фрагменты базы знаний внешней модели через OpenClaw.</span></label><p>Используйте разрешённые или обезличенные документы. Согласие действует на один запуск.</p></div>
+                <details class="advanced-options"><summary>Дополнительные параметры</summary><div class="advanced-content"><div class="field"><label for="document-type">Тип письма</label><select id="document-type"><option value="unspecified">Не указан</option><option value="request">Запрос</option><option value="response">Ответ</option><option value="notification">Уведомление</option><option value="cover_letter">Сопроводительное</option></select></div><div class="field"><label for="external-id">ID документа в СЭД <span class="muted normal">· необязательно</span></label><input id="external-id" type="text" maxlength="128" autocomplete="off" placeholder="Например, letter-2026-015"><p class="field-help">Сохраняется локально для связи с вашей системой.</p></div><div class="field"><label for="template-id">ID шаблона <span class="muted normal">· необязательно</span></label><input id="template-id" type="text" maxlength="64" pattern="[A-Za-z0-9_.\-]+" autocomplete="off" placeholder="Если шаблон определён"></div><label class="checkbox-label" for="cache-check"><input id="cache-check" type="checkbox" checked><span>Использовать кэш повторных тяжёлых проверок</span></label><p class="field-help">Для независимого нового расчёта отключите. Первый запуск выполняется полностью.</p></div></details>
+              </div>
+            </fieldset>
+            <div id="analysis-error" class="notice notice-error" role="alert" hidden></div>
+            <div id="analysis-progress" class="analysis-progress" role="status" hidden><div class="progress-track"></div><p><span class="spinner"></span><strong id="progress-title">Проверяем письмо</strong><span id="elapsed" class="muted mono">0 с</span></p><span id="progress-help" class="muted small">Запрос выполняется на сервере.</span></div>
+            <div class="form-footer"><span class="small muted"><svg aria-hidden="true"><use href="/assets/icons.svg#lock"></use></svg><span id="privacy-label">Проверка без внешней модели</span></span><button id="analyze-button" class="button button-primary" type="submit"><svg aria-hidden="true"><use href="/assets/icons.svg#check"></use></svg><span>Проверить письмо</span></button></div>
+          </form>
+          <aside class="analysis-aside" aria-label="О проверке">
+            <div class="aside-title"><svg aria-hidden="true"><use href="/assets/icons.svg#info"></use></svg><h2>Как это работает</h2></div>
+            <ol class="steps"><li><span class="step-number">1</span><div><strong>Загрузите письмо</strong><p>Сервис прочитает текст и доступные свойства DOCX.</p></div></li><li><span class="step-number">2</span><div><strong>Выберите проверки</strong><p>Правила работают без модели. Язык и содержание включаются отдельно.</p></div></li><li><span class="step-number">3</span><div><strong>Разберите замечания</strong><p>У каждого — причина, фрагмент и рекомендация.</p></div></li></ol>
+            <div class="aside-note"><svg aria-hidden="true"><use href="/assets/icons.svg#shield"></use></svg><p>Решение остаётся за вами. Сервис не редактирует и не отправляет письма.</p></div>
+            <a class="text-link small aside-api" href="/docs" target="_blank" rel="noopener noreferrer">Подключить через REST API <span aria-hidden="true">↗</span></a>
+          </aside>
+        </div>
+        <div class="bottom-note"><svg aria-hidden="true"><use href="/assets/icons.svg#info"></use></svg><p>Содержимое изображений и расположение на страницах не анализируются. Результат — помощь автору, а не заключение о соответствии ГОСТ.</p></div>
+      </div>
+      <div id="report-screen" hidden></div>
+    </section>
+    <section id="reports-view" class="view" aria-labelledby="reports-heading" hidden><div class="page-heading"><div><h1 id="reports-heading">Отчёты</h1><p>Сохранённые результаты. Открытие отчёта не запускает проверку заново.</p></div><button id="refresh-reports" class="button" type="button"><svg aria-hidden="true"><use href="/assets/icons.svg#refresh"></use></svg>Обновить</button></div><div class="list-toolbar"><label class="search-field"><svg aria-hidden="true"><use href="/assets/icons.svg#search"></use></svg><input id="report-search" type="search" placeholder="Найти в загруженном списке" aria-label="Найти отчёт в загруженном списке"></label><span id="reports-count" class="muted small"></span></div><div id="reports-content"></div><div id="reports-pagination" class="pagination" hidden><button id="previous-reports" class="button button-small" type="button">← Назад</button><span id="reports-page" class="muted small"></span><button id="next-reports" class="button button-small" type="button">Далее →</button></div></section>
+    <section id="rules-view" class="view" aria-labelledby="rules-heading" hidden><div class="page-heading"><div><h1 id="rules-heading">Правила проверки</h1><p>Что проверяет сервис, на каком основании и в каких случаях.</p></div><span id="rules-count" class="badge"></span></div><div class="list-toolbar"><label class="search-field"><svg aria-hidden="true"><use href="/assets/icons.svg#search"></use></svg><input id="rule-search" type="search" placeholder="Название или код правила" aria-label="Найти правило"></label><label class="sr-only" for="rule-filter">Группа правил</label><select id="rule-filter"><option value="all">Все правила</option><option value="instruction">По инструкции</option><option value="heuristic">Базовые эвристики</option></select></div><div id="rules-content"></div></section>
+  </main>
+  <footer class="site-footer"><span>SED DSS <span class="muted">/</span> Поддержка решений</span><span>Оригинал остаётся у вас <span class="footer-separator">·</span> <a href="/openapi.json" target="_blank" rel="noopener noreferrer">OpenAPI</a></span></footer>
+  <dialog id="connection-dialog" aria-labelledby="connection-heading"><form id="connection-form"><div class="dialog-heading"><span class="dialog-icon"><svg aria-hidden="true"><use href="/assets/icons.svg#key"></use></svg></span><button id="close-connection" class="icon-button" type="button" aria-label="Закрыть подключение"><svg aria-hidden="true"><use href="/assets/icons.svg#close"></use></svg></button></div><h2 id="connection-heading">Подключение к сервису</h2><p class="muted">Введите ключ приложения для проверки писем и доступа к отчётам.</p><div class="field"><label for="api-key">Ключ приложения</label><input id="api-key" type="password" autocomplete="off" spellcheck="false" required placeholder="APP_API_KEY"><p class="field-help">Значение <code>APP_API_KEY</code> из <code>.env</code>. Это ключ нашего сервиса, а не ключ модели.</p></div><p class="connection-privacy"><svg aria-hidden="true"><use href="/assets/icons.svg#lock"></use></svg>Ключ хранится только в памяти этой вкладки. После перезагрузки потребуется ввести его снова.</p><div id="connection-error" class="notice notice-error" role="alert" hidden></div><div class="dialog-footer"><button id="disconnect-button" class="button button-danger" type="button" hidden>Отключиться</button><button id="connect-button" class="button button-primary" type="submit">Подключиться</button></div></form></dialog>
+  <div id="toast" class="toast" role="status" hidden></div>
+  <noscript><div class="noscript">Для веб-интерфейса включите JavaScript. REST API доступен независимо: <a href="/docs">Swagger</a>.</div></noscript>
+</body>
+</html>

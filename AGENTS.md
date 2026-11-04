@@ -36,6 +36,7 @@ Build a **small, auditable, Russian-language decision support microservice** for
 - Retrieval: keyword baseline; **not** semantic RAG. pgvector/BM25 only after baseline measurements.
 - v0.6 caches completed heavy-analysis report references in process memory only (TTL 900 s, LRU 128). No source files/text/output copies in the cache. Authentication and model consent precede lookup; input/config/rules/corpus changes and report deletion invalidate reuse. Preserve idempotency before cache; use_cache=false plus a fresh key is required for independent measurements. Analysis-Cache indicates hit/miss/bypass; concurrent matching heavy requests in one process get 409/busy. Recreate API with the gateway after model/provider configuration changes. Do not claim distributed or crash-proof deduplication.
 - No aggregated quality score until weighting and validation with domain experts.
+- v0.7 serves a same-origin static web client at /, independently of REST /api/v1. No CDN/runtime frontend dependencies, key/report persistence in browser storage, or automatic analysis retries. Only theme may use localStorage. Render document/server content as text, keep CSP restrictive, consume model consent before every Send. Uncertain retries keep the original operation key. Chat/explanations remain T24, not implemented by the frontend milestone.
 - External provider failures must not erase rule-based results; report partial status.
 - Corpus (`good`, `bad`, `normative`) may contain private data; store only if permitted and consider retention policies.
 

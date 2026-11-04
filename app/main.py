@@ -32,6 +32,8 @@ from app.db import SessionLocal, engine, get_db
 from app.diagnostics import local_warnings
 from app.document_context import document_profile
 from app.document_parser import DocumentParseError, parse_docx, parse_knowledge
+from app.frontend import FRONTEND_CSP, STATIC_DIRECTORY, FrontendFiles
+from app.frontend import router as frontend_router
 from app.idempotency import fingerprints, persist_run, replay
 from app.language import LanguageCheckError, check_language
 from app.letter_checks import IMPLEMENTED, PROFILE_ID, evaluate_policy
@@ -64,7 +66,7 @@ async def lifespan(app: FastAPI):
         app.state.analysis_cache.clear()
 
 
-app = FastAPI(title="SED DSS — анализ исходящих писем", version="0.6.0", lifespan=lifespan,
+app = FastAPI(title="SED DSS — анализ исходящих писем", version="0.7.0", lifespan=lifespan,
               description=api_docs.API_DESCRIPTION,
               openapi_tags=[
                   {"name": "Анализ", "description": "Проверка DOCX и объяснение результата. Решение принимает человек."},
@@ -75,6 +77,9 @@ app = FastAPI(title="SED DSS — анализ исходящих писем", ve
               ],
               swagger_ui_parameters={"defaultModelRendering": "model", "displayRequestDuration": True})
 
+app.include_router(frontend_router)
+app.mount("/assets", FrontendFiles(directory=STATIC_DIRECTORY), name="assets")
+
 
 @app.middleware("http")
 async def trace_request(request: Request, call_next):
@@ -84,6 +89,13 @@ async def trace_request(request: Request, call_next):
     response = await call_next(request)
     if request.url.path.startswith('/api/v1/'):
         response.headers['Cache-Control'] = 'no-store'
+    if request.url.path == '/' or request.url.path.startswith('/assets/'):
+        response.headers['Cache-Control'] = 'no-store'
+        response.headers['Content-Security-Policy'] = FRONTEND_CSP
+        response.headers['Referrer-Policy'] = 'no-referrer'
+        response.headers['X-Content-Type-Options'] = 'nosniff'
+        response.headers['X-Frame-Options'] = 'DENY'
+        response.headers['Permissions-Policy'] = 'camera=(), microphone=(), geolocation=()'
     response.headers["X-Request-ID"] = request.state.request_id
     response.headers["Server-Timing"] = f"app;dur={(perf_counter() - started) * 1000:.2f}"
     return response
